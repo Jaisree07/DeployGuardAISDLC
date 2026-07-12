@@ -1,8 +1,13 @@
 from sqlalchemy.orm import Session
 
+from backend.signals.collector import SignalCollector
+from backend.normalizers.normalizer import SignalNormalizer
+from backend.parsers.parser import SignalParser
+from backend.storage.sqlite_storage import SQLiteStorage
+
 from backend.models.telemetry import Telemetry
-from backend.utils.telemetry_generator import TelemetryGenerator
 from backend.models.deployment import Deployment
+
 from backend.schemas.deployment import (
     DeploymentCreate,
     DeploymentUpdate,
@@ -13,6 +18,10 @@ class DeploymentService:
 
     @staticmethod
     def create(db: Session, deployment: DeploymentCreate):
+        # Deferred imports to avoid circular import with backend.api.deployment
+        from backend.monitoring.pushgateway import push_deployment_metrics
+        from backend.monitoring.prometheus import DEPLOYMENT_COUNT
+        from backend.utils.telemetry_generator import TelemetryGenerator
 
         db_deployment = Deployment(
             deployment_name=deployment.deployment_name,
@@ -25,6 +34,22 @@ class DeploymentService:
         db.commit()
         db.refresh(db_deployment)
 
+        signal = SignalCollector.collect(
+            deployment_name=db_deployment.deployment_name,
+            environment=db_deployment.environment,
+            status=db_deployment.status,
+            source="GitHub Actions"
+        )
+
+        signal = SignalNormalizer.normalize(signal)
+        signal = SignalParser.parse(signal)
+
+        print("Signal:", signal)
+
+        SQLiteStorage.save(signal)
+
+        DEPLOYMENT_COUNT.inc()
+
         telemetry = TelemetryGenerator.generate()
 
         db_telemetry = Telemetry(
@@ -35,16 +60,20 @@ class DeploymentService:
         db.add(db_telemetry)
         db.commit()
 
+        push_deployment_metrics(
+            deployment_name=db_deployment.deployment_name,
+            build_duration=12.5,
+            deployment_duration=4.2,
+        )
+
         return db_deployment
 
     @staticmethod
     def get_all(db: Session):
-
         return db.query(Deployment).all()
 
     @staticmethod
     def get_by_id(db: Session, deployment_id: int):
-
         return (
             db.query(Deployment)
             .filter(Deployment.id == deployment_id)
@@ -57,7 +86,6 @@ class DeploymentService:
         deployment_id: int,
         deployment: DeploymentUpdate
     ):
-
         db_deployment = (
             db.query(Deployment)
             .filter(Deployment.id == deployment_id)
@@ -79,7 +107,6 @@ class DeploymentService:
 
     @staticmethod
     def delete(db: Session, deployment_id: int):
-
         db_deployment = (
             db.query(Deployment)
             .filter(Deployment.id == deployment_id)

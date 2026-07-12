@@ -7,7 +7,6 @@ os.makedirs(LOG_DIR, exist_ok=True)
 logger = logging.getLogger("DeployGuardAI")
 logger.setLevel(logging.INFO)
 
-# Avoid duplicate handlers when uvicorn reloads
 if not logger.handlers:
     formatter = logging.Formatter(
         "%(asctime)s | %(levelname)s | %(message)s"
