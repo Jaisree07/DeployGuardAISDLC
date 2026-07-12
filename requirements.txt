@@ -42,4 +42,4 @@ joblib
 faker
 prometheus-client
 requests
-
+httpx
