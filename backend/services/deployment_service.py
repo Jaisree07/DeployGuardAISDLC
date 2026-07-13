@@ -5,8 +5,13 @@ from backend.normalizers.normalizer import SignalNormalizer
 from backend.parsers.parser import SignalParser
 from backend.storage.sqlite_storage import SQLiteStorage
 
+from backend.monitoring.pushgateway import push_deployment_metrics
+from backend.monitoring.prometheus import DEPLOYMENT_COUNT
+
 from backend.models.telemetry import Telemetry
 from backend.models.deployment import Deployment
+
+from backend.utils.telemetry_generator import TelemetryGenerator
 
 from backend.schemas.deployment import (
     DeploymentCreate,
@@ -18,10 +23,6 @@ class DeploymentService:
 
     @staticmethod
     def create(db: Session, deployment: DeploymentCreate):
-        # Deferred imports to avoid circular import with backend.api.deployment
-        from backend.monitoring.pushgateway import push_deployment_metrics
-        from backend.monitoring.prometheus import DEPLOYMENT_COUNT
-        from backend.utils.telemetry_generator import TelemetryGenerator
 
         db_deployment = Deployment(
             deployment_name=deployment.deployment_name,
@@ -38,7 +39,7 @@ class DeploymentService:
             deployment_name=db_deployment.deployment_name,
             environment=db_deployment.environment,
             status=db_deployment.status,
-            source="GitHub Actions"
+            source="FastAPI"
         )
 
         signal = SignalNormalizer.normalize(signal)
@@ -86,6 +87,7 @@ class DeploymentService:
         deployment_id: int,
         deployment: DeploymentUpdate
     ):
+
         db_deployment = (
             db.query(Deployment)
             .filter(Deployment.id == deployment_id)
@@ -107,6 +109,7 @@ class DeploymentService:
 
     @staticmethod
     def delete(db: Session, deployment_id: int):
+
         db_deployment = (
             db.query(Deployment)
             .filter(Deployment.id == deployment_id)

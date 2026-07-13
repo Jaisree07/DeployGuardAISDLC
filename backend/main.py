@@ -1,7 +1,6 @@
 from fastapi import FastAPI
 from backend.api.features import router as feature_router
 from backend.api.signals import router as signals_router
-from backend.api.signals import router as signals_router
 from backend.storage.sqlite_storage import SQLiteStorage
 from backend.api.telemetry import router as telemetry_router
 from backend.api.deployment import router as deployment_router
@@ -27,11 +26,10 @@ app = FastAPI(
 )
 
 # Register API Routers
+app.add_middleware(MetricsMiddleware)
 app.include_router(deployment_router)
 app.include_router(telemetry_router)
 app.include_router(predict_router)
-app.add_middleware(MetricsMiddleware)
-app.include_router(signals_router)
 app.include_router(signals_router)
 app.include_router(feature_router)
 

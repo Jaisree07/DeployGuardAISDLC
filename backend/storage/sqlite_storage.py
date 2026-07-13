@@ -8,21 +8,41 @@ class SQLiteStorage:
 
     @staticmethod
     def initialize():
+
         print(f"[SQLite] Initializing database at: {DB_PATH.resolve()}")
 
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
 
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS deployment_signals (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            deployment_name TEXT,
-            environment TEXT,
-            status TEXT,
-            source TEXT,
-            timestamp TEXT
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS deployment_signals (
+
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+                deployment_name TEXT,
+
+                environment TEXT,
+
+                status TEXT,
+
+                source TEXT,
+
+                timestamp TEXT,
+
+                sync_status TEXT,
+
+                health_status TEXT,
+
+                revision TEXT,
+
+                namespace TEXT,
+
+                cluster TEXT
+
+            )
+            """
         )
-        """)
 
         conn.commit()
         conn.close()
@@ -37,6 +57,7 @@ class SQLiteStorage:
         print("Signal received:", signal)
 
         try:
+
             conn = sqlite3.connect(DB_PATH)
             cursor = conn.cursor()
 
@@ -48,33 +69,60 @@ class SQLiteStorage:
                     environment,
                     status,
                     source,
-                    timestamp
+                    timestamp,
+
+                    sync_status,
+                    health_status,
+                    revision,
+                    namespace,
+                    cluster
                 )
-                VALUES (?, ?, ?, ?, ?)
+
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     signal["deployment_name"],
                     signal["environment"],
                     signal["status"],
                     signal["source"],
-                    signal["timestamp"]
+                    signal["timestamp"],
+
+                    signal["argocd"]["sync_status"],
+                    signal["argocd"]["health_status"],
+                    signal["argocd"]["revision"],
+                    signal["argocd"]["namespace"],
+                    signal["argocd"]["cluster"]
                 )
             )
 
             conn.commit()
 
-            print("Rows inserted:", cursor.rowcount)
-            print("Last Row ID:", cursor.lastrowid)
+            print("Rows inserted :", cursor.rowcount)
+            print("Last Row ID   :", cursor.lastrowid)
 
-            cursor.execute("SELECT COUNT(*) FROM deployment_signals")
+            cursor.execute(
+                "SELECT COUNT(*) FROM deployment_signals"
+            )
+
             total = cursor.fetchone()[0]
 
-            print("Total rows in deployment_signals:", total)
+            print("Total rows :", total)
+
+            cursor.execute(
+                "SELECT * FROM deployment_signals ORDER BY id DESC LIMIT 1"
+            )
+
+            latest = cursor.fetchone()
+
+            print("\nLatest Record")
+            print(latest)
 
             conn.close()
 
-            print("SQLite connection closed.")
+            print("\nSQLite connection closed.")
             print("========== SQLITE DEBUG END ==========\n")
 
         except Exception as e:
-            print("SQLite Error:", e)
+
+            print("\nSQLite Error")
+            print(str(e))

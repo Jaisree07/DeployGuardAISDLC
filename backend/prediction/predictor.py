@@ -1,42 +1,68 @@
-import joblib
-import pandas as pd
+from backend.ml.model_loader import ModelLoader
+from backend.ml.anomaly_detector import AnomalyDetector
 
 
 class Predictor:
 
-    def __init__(self):
+    ENVIRONMENT = {
+        "DEV": 0,
+        "QA": 1,
+        "UAT": 2,
+        "PROD": 3
+    }
 
-        self.rf = joblib.load(
-            "ml/saved_models/random_forest.pkl"
+    @staticmethod
+    def predict(data):
+
+        env = Predictor.ENVIRONMENT.get(
+            data["environment"],
+            0
         )
 
-        self.iso = joblib.load(
-            "ml/saved_models/isolation_forest.pkl"
-        )
+        features = [
 
-    def predict(self, request):
+            env,
 
-        df = pd.DataFrame([request])
+            data["cpu_usage"],
+            data["memory_usage"],
+            data["latency"],
+            data["build_duration"],
+            data["deployment_duration"],
+            data["error_count"],
 
-        prediction = self.rf.predict(df)[0]
+            int(data["cpu_usage"] > 80),
+            int(data["memory_usage"] > 80),
+            int(data["latency"] > 500),
+            int(data["error_count"] > 0)
 
-        probability = max(
-            self.rf.predict_proba(df)[0]
-        )
+        ]
 
-        anomaly = self.iso.predict(df)[0]
+        prediction, confidence = ModelLoader.predict(features)
+
+        anomaly = AnomalyDetector.predict([
+            data["cpu_usage"],
+            data["memory_usage"],
+            data["latency"],
+            data["error_count"]
+        ])
+
+        if prediction == 1:
+            status = "Healthy Deployment"
+            risk = "Low"
+        else:
+            status = "Deployment Failure"
+            risk = "Critical"
 
         return {
 
-            "prediction":
-                "Healthy"
-                if prediction == 1
-                else "Failure",
+            "prediction": status,
 
-            "confidence":
-                round(probability * 100, 2),
+            "confidence": confidence,
 
-            "anomaly":
-                False if anomaly == 1 else True
+            "risk": risk,
+
+            "anomaly": anomaly,
+
+            "model_version": "RandomForest_v1"
 
         }

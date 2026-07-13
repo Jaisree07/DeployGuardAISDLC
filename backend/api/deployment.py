@@ -11,6 +11,12 @@ from backend.schemas.deployment import (
 )
 from backend.services.deployment_service import DeploymentService
 
+from backend.monitoring.prometheus import (
+    DEPLOYMENT_COUNT,
+    DEPLOYMENT_SUCCESS,
+    DEPLOYMENT_FAILURE,
+)
+
 router = APIRouter(prefix="/deployments", tags=["Deployments"])
 
 
@@ -19,7 +25,17 @@ def create_deployment(
     deployment: DeploymentCreate,
     db: Session = Depends(get_db)
 ):
-    return DeploymentService.create(db, deployment)
+    try:
+        result = DeploymentService.create(db, deployment)
+
+        DEPLOYMENT_COUNT.inc()
+        DEPLOYMENT_SUCCESS.inc()
+
+        return result
+
+    except Exception:
+        DEPLOYMENT_FAILURE.inc()
+        raise
 
 
 @router.get("/", response_model=List[DeploymentResponse])

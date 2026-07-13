@@ -5,7 +5,9 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from backend.monitoring.prometheus import (
     REQUEST_COUNT,
     REQUEST_LATENCY,
+    API_ERRORS,
 )
+
 from backend.telemetry.runtime import update_system_metrics
 
 
@@ -15,23 +17,56 @@ class MetricsMiddleware(BaseHTTPMiddleware):
 
         start_time = time.time()
 
-        response = await call_next(request)
+        try:
+            response = await call_next(request)
 
-        duration = time.time() - start_time
+            duration = time.time() - start_time
 
-        # Increment request counter
-        REQUEST_COUNT.labels(
-            request.method,
-            request.url.path
-        ).inc()
+            # Total Request Count
+            REQUEST_COUNT.labels(
+                request.method,
+                request.url.path
+            ).inc()
 
-        # Record request latency
-        REQUEST_LATENCY.labels(
-            request.method,
-            request.url.path
-        ).observe(duration)
+            # Request Latency
+            REQUEST_LATENCY.labels(
+                request.method,
+                request.url.path
+            ).observe(duration)
 
-        # Update runtime system metrics
-        update_system_metrics()
+            # HTTP Error Counter
+            if response.status_code >= 400:
+                API_ERRORS.labels(
+                    request.method,
+                    request.url.path,
+                    str(response.status_code)
+                ).inc()
 
-        return response
+            # Runtime Metrics
+            update_system_metrics()
+
+            return response
+
+        except Exception:
+
+            duration = time.time() - start_time
+
+            REQUEST_COUNT.labels(
+                request.method,
+                request.url.path
+            ).inc()
+
+            REQUEST_LATENCY.labels(
+                request.method,
+                request.url.path
+            ).observe(duration)
+
+            API_ERRORS.labels(
+                request.method,
+                request.url.path,
+                "500"
+            ).inc()
+
+            update_system_metrics()
+
+            raise
