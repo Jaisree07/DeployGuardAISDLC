@@ -5,13 +5,14 @@ on:
     branches:
       - main
       - master
+
   pull_request:
     branches:
       - main
       - master
 
 jobs:
-  build-and-test:
+  build-test-and-verify:
     runs-on: ubuntu-latest
 
     steps:
@@ -31,3 +32,23 @@ jobs:
       - name: Run Unit Tests
         run: |
           pytest
+
+      - name: Build Docker Image
+        run: |
+          docker build -t deployguard-ai .
+
+      - name: Start Application
+        run: |
+          docker compose up -d
+
+      - name: Wait for API
+        run: |
+          sleep 15
+
+      - name: Verify Health Endpoint
+        run: |
+          curl --fail http://localhost:8000/health
+
+      - name: Verify Metrics Endpoint
+        run: |
+          curl --fail http://localhost:8000/metrics
