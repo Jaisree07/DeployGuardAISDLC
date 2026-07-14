@@ -24,6 +24,9 @@ class DeploymentService:
     @staticmethod
     def create(db: Session, deployment: DeploymentCreate):
 
+        # -----------------------------
+        # Save Deployment
+        # -----------------------------
         db_deployment = Deployment(
             deployment_name=deployment.deployment_name,
             version=deployment.version,
@@ -35,6 +38,9 @@ class DeploymentService:
         db.commit()
         db.refresh(db_deployment)
 
+        # -----------------------------
+        # Collect Deployment Signals
+        # -----------------------------
         signal = SignalCollector.collect(
             deployment_name=db_deployment.deployment_name,
             environment=db_deployment.environment,
@@ -45,12 +51,18 @@ class DeploymentService:
         signal = SignalNormalizer.normalize(signal)
         signal = SignalParser.parse(signal)
 
-        print("Signal:", signal)
+        print("Collected Signal:", signal)
 
         SQLiteStorage.save(signal)
 
+        # -----------------------------
+        # Prometheus Counter
+        # -----------------------------
         DEPLOYMENT_COUNT.inc()
 
+        # -----------------------------
+        # Generate Runtime Telemetry
+        # -----------------------------
         telemetry = TelemetryGenerator.generate()
 
         db_telemetry = Telemetry(
@@ -61,11 +73,19 @@ class DeploymentService:
         db.add(db_telemetry)
         db.commit()
 
-        push_deployment_metrics(
-            deployment_name=db_deployment.deployment_name,
-            build_duration=12.5,
-            deployment_duration=4.2,
-        )
+        # -----------------------------
+        # Push Metrics to Pushgateway
+        # -----------------------------
+        try:
+            push_deployment_metrics(
+                deployment_name=db_deployment.deployment_name,
+                build_duration=12.5,
+                deployment_duration=4.2,
+            )
+            print("✅ Metrics pushed successfully.")
+
+        except Exception as e:
+            print(f"⚠ Pushgateway Error: {e}")
 
         return db_deployment
 

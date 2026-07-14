@@ -12,12 +12,11 @@ on:
       - master
 
 jobs:
-  build-test-and-verify:
+  build-test:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -29,7 +28,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run Unit Tests
+      - name: Run Tests
         run: |
           pytest
 
@@ -37,13 +36,12 @@ jobs:
         run: |
           docker build -t deployguard-ai .
 
-      - name: Start Application
+      - name: Start Containers
         run: |
           docker compose up -d
 
       - name: Wait for API
-        run: |
-          sleep 15
+        run: sleep 20
 
       - name: Verify Health Endpoint
         run: |

@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from backend.api.regressions import router as regressions_router
 from backend.api.features import router as feature_router
 from backend.api.signals import router as signals_router
 from backend.storage.sqlite_storage import SQLiteStorage
@@ -32,6 +33,7 @@ app.include_router(telemetry_router)
 app.include_router(predict_router)
 app.include_router(signals_router)
 app.include_router(feature_router)
+app.include_router(regressions_router)
 
 @app.get("/", tags=["Application"])
 def root():

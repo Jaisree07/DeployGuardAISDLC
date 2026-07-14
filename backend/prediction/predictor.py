@@ -1,6 +1,8 @@
 from backend.ml.model_loader import ModelLoader
 from backend.ml.anomaly_detector import AnomalyDetector
 
+from backend.ai.ai_service import AIService
+
 
 class Predictor:
 
@@ -37,6 +39,7 @@ class Predictor:
 
         ]
 
+
         prediction, confidence = ModelLoader.predict(features)
 
         anomaly = AnomalyDetector.predict([
@@ -53,6 +56,36 @@ class Predictor:
             status = "Deployment Failure"
             risk = "Critical"
 
+
+        ai_input = {
+
+            "environment": data["environment"],
+
+            "prediction": status,
+
+            "confidence": confidence,
+
+            "risk": risk,
+
+            "anomaly": anomaly,
+
+            "cpu_usage": data["cpu_usage"],
+
+            "memory_usage": data["memory_usage"],
+
+            "latency": data["latency"],
+
+            "build_duration": data["build_duration"],
+
+            "deployment_duration": data["deployment_duration"],
+
+            "error_count": data["error_count"]
+
+        }
+
+        ai_explanation = AIService.generate(ai_input)
+
+
         return {
 
             "prediction": status,
@@ -63,6 +96,8 @@ class Predictor:
 
             "anomaly": anomaly,
 
-            "model_version": "RandomForest_v1"
+            "model_version": "RandomForest_v1",
+
+            "ai_explanation": ai_explanation
 
         }

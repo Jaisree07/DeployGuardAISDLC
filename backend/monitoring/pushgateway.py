@@ -1,6 +1,10 @@
+import os
 from prometheus_client import CollectorRegistry, Gauge, push_to_gateway
 
-PUSHGATEWAY_URL = "http://localhost:9091"
+PUSHGATEWAY_URL = os.getenv(
+    "PUSHGATEWAY_URL",
+    "http://pushgateway:9091"
+)
 
 
 def push_deployment_metrics(
@@ -25,8 +29,12 @@ def push_deployment_metrics(
     build_metric.set(build_duration)
     deployment_metric.set(deployment_duration)
 
+    print(f"Pushing metrics to {PUSHGATEWAY_URL}")
+
     push_to_gateway(
-        PUSHGATEWAY_URL,
+        gateway=PUSHGATEWAY_URL,
         job=deployment_name,
         registry=registry,
     )
+
+    print("✅ Metrics pushed successfully.")

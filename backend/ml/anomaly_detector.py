@@ -25,7 +25,7 @@ class AnomalyDetector:
         X = df[features]
 
         model = IsolationForest(
-            contamination=0.10,
+            contamination=0.05,
             random_state=42
         )
 

@@ -44,3 +44,4 @@ prometheus-client
 requests
 httpx
 psutil
+groq==0.30.0

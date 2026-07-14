@@ -61,6 +61,9 @@ class SQLiteStorage:
             conn = sqlite3.connect(DB_PATH)
             cursor = conn.cursor()
 
+            # Safe handling for signals that do not contain ArgoCD information
+            argocd = signal.get("argocd", {})
+
             cursor.execute(
                 """
                 INSERT INTO deployment_signals
@@ -81,17 +84,17 @@ class SQLiteStorage:
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
-                    signal["deployment_name"],
-                    signal["environment"],
-                    signal["status"],
-                    signal["source"],
-                    signal["timestamp"],
+                    signal.get("deployment_name"),
+                    signal.get("environment"),
+                    signal.get("status"),
+                    signal.get("source"),
+                    signal.get("timestamp"),
 
-                    signal["argocd"]["sync_status"],
-                    signal["argocd"]["health_status"],
-                    signal["argocd"]["revision"],
-                    signal["argocd"]["namespace"],
-                    signal["argocd"]["cluster"]
+                    argocd.get("sync_status"),
+                    argocd.get("health_status"),
+                    argocd.get("revision"),
+                    argocd.get("namespace"),
+                    argocd.get("cluster"),
                 )
             )
 
@@ -124,5 +127,7 @@ class SQLiteStorage:
 
         except Exception as e:
 
-            print("\nSQLite Error")
+            print("\n========== SQLITE ERROR ==========")
+            print(type(e).__name__)
             print(str(e))
+            print("==================================\n")

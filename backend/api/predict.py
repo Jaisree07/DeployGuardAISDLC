@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 
 from backend.schemas.predict import PredictionRequest
 from backend.prediction.predictor import Predictor
@@ -20,22 +20,37 @@ router = APIRouter(
 @router.post("/")
 def predict(request: PredictionRequest):
 
-    # Count every prediction request
-    PREDICTION_COUNT.inc()
+    try:
 
-    # Get prediction from ML model
-    result = Predictor.predict(
-        request.model_dump()
-    )
+        # Count every prediction request
+        PREDICTION_COUNT.inc()
 
-    # Set model information
-    MODEL_ACCURACY.set(0.97)   # Replace with your actual model accuracy
-    MODEL_VERSION.set(1)       # Model version
+        # Get prediction from ML model
+        result = Predictor.predict(
+            request.model_dump()
+        )
 
-    # Update prediction counters
-    if result["prediction"] == "Healthy Deployment":
-        PREDICTION_SUCCESS.inc()
-    else:
+        # Update model metrics
+        MODEL_ACCURACY.set(0.97)
+        MODEL_VERSION.set(1)
+
+        # Update prediction counters
+        if result["prediction"] == "Healthy Deployment":
+            PREDICTION_SUCCESS.inc()
+        else:
+            PREDICTION_FAILURE.inc()
+
+        return {
+            "success": True,
+            "message": "Prediction generated successfully.",
+            "data": result
+        }
+
+    except Exception as e:
+
         PREDICTION_FAILURE.inc()
 
-    return result
+        raise HTTPException(
+            status_code=500,
+            detail=f"Prediction failed: {str(e)}"
+        )

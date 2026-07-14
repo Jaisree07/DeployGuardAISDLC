@@ -11,7 +11,14 @@ services:
     volumes:
       - .:/app
 
+    depends_on:
+      - prometheus
+      - pushgateway
+
     restart: unless-stopped
+
+    networks:
+      - deployguard-network
 
   prometheus:
     image: prom/prometheus
@@ -26,6 +33,9 @@ services:
 
     restart: unless-stopped
 
+    networks:
+      - deployguard-network
+
   grafana:
     image: grafana/grafana
 
@@ -39,6 +49,9 @@ services:
 
     restart: unless-stopped
 
+    networks:
+      - deployguard-network
+
   pushgateway:
     image: prom/pushgateway
 
@@ -49,5 +62,12 @@ services:
 
     restart: unless-stopped
 
+    networks:
+      - deployguard-network
+
 volumes:
   grafana-storage:
+
+networks:
+  deployguard-network:
+    driver: bridge
