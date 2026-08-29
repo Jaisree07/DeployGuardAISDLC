@@ -5,6 +5,12 @@ services:
 
     container_name: deployguard-api
 
+    env_file:
+      - .env
+
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
     ports:
       - "8000:8000"
 
@@ -19,6 +25,7 @@ services:
 
     networks:
       - deployguard-network
+
 
   prometheus:
     image: prom/prometheus
@@ -36,6 +43,7 @@ services:
     networks:
       - deployguard-network
 
+
   grafana:
     image: grafana/grafana
 
@@ -52,6 +60,7 @@ services:
     networks:
       - deployguard-network
 
+
   pushgateway:
     image: prom/pushgateway
 
@@ -65,9 +74,12 @@ services:
     networks:
       - deployguard-network
 
+
 volumes:
+
   grafana-storage:
 
+
 networks:
+
   deployguard-network:
-    driver: bridge
