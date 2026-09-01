@@ -8,12 +8,16 @@ on:
       - main
       - master
 
+
 jobs:
+
   deployment-verification:
+
     runs-on: ubuntu-latest
 
     env:
       GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+
 
     steps:
 
@@ -113,15 +117,17 @@ jobs:
 
       - name: Wait for DeployGuard API
         run: |
-
           echo "Waiting for DeployGuard API..."
 
           for i in {1..30}; do
 
             if curl -sf http://localhost:8000/health; then
+
               echo ""
               echo "DeployGuard API is ready."
+
               exit 0
+
             fi
 
             echo "Waiting... attempt $i/30"
@@ -138,7 +144,7 @@ jobs:
 
 
       # ============================================================
-      # 10. REGISTER ACTUAL DEPLOYMENT
+      # 10. REGISTER DEPLOYMENT WITH DEPLOYGUARD
       # ============================================================
 
       - name: Register Deployment with DeployGuard
@@ -158,6 +164,7 @@ jobs:
             }')
 
           echo "Deployment Registration Response:"
+
           echo "$RESPONSE"
 
           echo "$RESPONSE" | python -m json.tool
@@ -173,6 +180,7 @@ jobs:
         run: |
 
           python - <<'PY'
+
           import json
 
           with open("deployment_response.json") as f:
@@ -188,186 +196,330 @@ jobs:
           ]
 
           for field in required_fields:
-              assert field in data, f"Missing deployment field: {field}"
+
+              assert field in data, \
+                  f"Missing deployment field: {field}"
 
           assert data["environment"] == "QA"
+
           assert data["status"] == "Running"
 
           print("")
+
           print("========================================")
           print("DEPLOYMENT REGISTRATION PASSED")
           print("========================================")
+
           print("Deployment ID:", data["id"])
           print("Deployment Name:", data["deployment_name"])
           print("Version:", data["version"])
           print("Environment:", data["environment"])
           print("Status:", data["status"])
           print("Created At:", data["created_at"])
+
           print("========================================")
+
+          PY
 
 
       # ============================================================
-      # 12. VERIFY METRICS ENDPOINT
+      # 12. COLLECT DEPLOYMENT TELEMETRY
+      # ============================================================
+
+      - name: Collect Deployment Telemetry
+        run: |
+
+          DEPLOYMENT_ID=$(python -c "
+          import json
+
+          with open('deployment_response.json') as f:
+              data = json.load(f)
+
+          print(data['id'])
+          ")
+
+          echo "Deployment ID: $DEPLOYMENT_ID"
+
+          echo "Collecting telemetry for deployment..."
+
+          TELEMETRY_RESPONSE=$(curl --fail \
+            http://localhost:8000/telemetry/$DEPLOYMENT_ID)
+
+          echo "Telemetry Response:"
+
+          echo "$TELEMETRY_RESPONSE"
+
+          echo "$TELEMETRY_RESPONSE" | python -m json.tool
+
+          echo "$TELEMETRY_RESPONSE" > telemetry_response.json
+
+
+      # ============================================================
+      # 13. VALIDATE DEPLOYMENT TELEMETRY
+      # ============================================================
+
+      - name: Validate Deployment Telemetry
+        run: |
+
+          python - <<'PY'
+
+          import json
+
+          with open("telemetry_response.json") as f:
+              data = json.load(f)
+
+          required_fields = [
+              "id",
+              "deployment_id",
+              "cpu_usage",
+              "memory_usage",
+              "latency",
+              "build_duration",
+              "deployment_duration",
+              "error_count",
+              "collected_at"
+          ]
+
+          for field in required_fields:
+
+              assert field in data, \
+                  f"Missing telemetry field: {field}"
+
+          assert data["deployment_id"] > 0
+
+          print("")
+
+          print("========================================")
+          print("DEPLOYMENT TELEMETRY VALIDATION PASSED")
+          print("========================================")
+
+          print("Deployment ID:", data["deployment_id"])
+          print("CPU Usage:", data["cpu_usage"])
+          print("Memory Usage:", data["memory_usage"])
+          print("Latency:", data["latency"])
+          print("Build Duration:", data["build_duration"])
+          print("Deployment Duration:", data["deployment_duration"])
+          print("Error Count:", data["error_count"])
+          print("Collected At:", data["collected_at"])
+
+          print("========================================")
+
+          PY
+
+
+      # ============================================================
+      # 14. VERIFY METRICS ENDPOINT
       # ============================================================
 
       - name: Verify Metrics Endpoint
         run: |
-          curl --fail http://localhost:8000/metrics
+
+          curl --fail \
+            http://localhost:8000/metrics
 
 
       # ============================================================
-      # 13. RUN ML DEPLOYMENT VERIFICATION
+      # 15. RUN ML DEPLOYMENT VERIFICATION
+      #     USING ACTUAL DEPLOYMENT TELEMETRY
       # ============================================================
 
       - name: Run ML Deployment Verification
         run: |
 
-          RESPONSE=$(curl --fail \
-            -X POST \
-            http://localhost:8000/predict/ \
-            -H "Content-Type: application/json" \
-            -d '{
+          python - <<'PY'
+
+          import json
+          import os
+          import urllib.request
+
+          with open("telemetry_response.json") as f:
+              telemetry = json.load(f)
+
+          payload = {
               "environment": "QA",
-              "cpu_usage": 35.0,
-              "memory_usage": 40.0,
-              "latency": 120.0,
-              "build_duration": 60.0,
-              "deployment_duration": 90.0,
-              "error_count": 1
-            }')
+              "cpu_usage": telemetry["cpu_usage"],
+              "memory_usage": telemetry["memory_usage"],
+              "latency": telemetry["latency"],
+              "build_duration": telemetry["build_duration"],
+              "deployment_duration": telemetry["deployment_duration"],
+              "error_count": telemetry["error_count"]
+          }
 
-          echo "ML Prediction Response:"
-          echo "$RESPONSE"
+          print("")
+          print("========================================")
+          print("ACTUAL TELEMETRY USED FOR ML")
+          print("========================================")
 
-          echo "$RESPONSE" | python -m json.tool
+          print(json.dumps(payload, indent=2))
+
+          print("========================================")
+
+          request = urllib.request.Request(
+              "http://localhost:8000/predict/",
+              data=json.dumps(payload).encode("utf-8"),
+              headers={
+                  "Content-Type": "application/json"
+              },
+              method="POST"
+          )
+
+          with urllib.request.urlopen(request) as response:
+
+              result = json.loads(
+                  response.read().decode("utf-8")
+              )
+
+          print("")
+          print("========================================")
+          print("ML PREDICTION RESPONSE")
+          print("========================================")
+
+          print(json.dumps(result, indent=2))
+
+          print("========================================")
+
+          with open("prediction_response.json", "w") as f:
+
+              json.dump(
+                  result,
+                  f,
+                  indent=2
+              )
+
+          PY
 
 
       # ============================================================
-      # 14. VALIDATE ML PREDICTION
+      # 16. VALIDATE ML PREDICTION
       # ============================================================
 
       - name: Validate ML Prediction
         run: |
 
-          RESPONSE=$(curl --fail \
-            -X POST \
-            http://localhost:8000/predict/ \
-            -H "Content-Type: application/json" \
-            -d '{
-              "environment": "QA",
-              "cpu_usage": 35.0,
-              "memory_usage": 40.0,
-              "latency": 120.0,
-              "build_duration": 60.0,
-              "deployment_duration": 90.0,
-              "error_count": 1
-            }')
+          python - <<'PY'
 
-          echo "$RESPONSE" | python -c "
-          import sys
           import json
 
-          data = json.load(sys.stdin)
+          with open("prediction_response.json") as f:
+              data = json.load(f)
 
-          assert data['success'] is True
-          assert 'data' in data
+          assert data["success"] is True
 
-          result = data['data']
+          assert "data" in data
 
-          assert 'prediction' in result
-          assert 'confidence' in result
-          assert 'risk' in result
-          assert 'anomaly' in result
-          assert 'model_version' in result
+          result = data["data"]
 
-          print('')
-          print('========================================')
-          print('ML DEPLOYMENT VERIFICATION PASSED')
-          print('========================================')
-          print('Prediction:', result['prediction'])
-          print('Confidence:', result['confidence'])
-          print('Risk:', result['risk'])
-          print('Anomaly:', result['anomaly'])
-          print('Model Version:', result['model_version'])
-          print('========================================')
-          "
+          assert "prediction" in result
+
+          assert "confidence" in result
+
+          assert "risk" in result
+
+          assert "anomaly" in result
+
+          assert "model_version" in result
+
+          print("")
+
+          print("========================================")
+          print("ML DEPLOYMENT VERIFICATION PASSED")
+          print("========================================")
+
+          print("Prediction:", result["prediction"])
+          print("Confidence:", result["confidence"])
+          print("Risk:", result["risk"])
+          print("Anomaly:", result["anomaly"])
+          print("Model Version:", result["model_version"])
+
+          print("========================================")
+
+          PY
 
 
       # ============================================================
-      # 15. VERIFY AI EXPLANATION
+      # 17. VERIFY AI EXPLANATION
       # ============================================================
 
       - name: Verify AI Explanation
         run: |
 
-          RESPONSE=$(curl --fail \
-            -X POST \
-            http://localhost:8000/predict/ \
-            -H "Content-Type: application/json" \
-            -d '{
-              "environment": "QA",
-              "cpu_usage": 35.0,
-              "memory_usage": 40.0,
-              "latency": 120.0,
-              "build_duration": 60.0,
-              "deployment_duration": 90.0,
-              "error_count": 1
-            }')
+          python - <<'PY'
 
-          echo "$RESPONSE" | python -c "
-          import sys
           import json
 
-          data = json.load(sys.stdin)
+          with open("prediction_response.json") as f:
+              data = json.load(f)
 
-          explanation = data['data'].get('ai_explanation', '')
+          explanation = data["data"].get(
+              "ai_explanation",
+              ""
+          )
 
-          print('')
-          print('========================================')
-          print('AI EXPLANATION')
-          print('========================================')
+          print("")
+
+          print("========================================")
+          print("AI EXPLANATION")
+          print("========================================")
+
           print(explanation)
-          print('========================================')
+
+          print("========================================")
 
           if not explanation:
-              raise SystemExit('ERROR: AI explanation is empty.')
 
-          if explanation.startswith('[AI explanation unavailable'):
-              raise SystemExit('ERROR: AI provider failed.')
+              raise SystemExit(
+                  "ERROR: AI explanation is empty."
+              )
 
-          print('AI explanation verification PASSED.')
-          "
+          if explanation.startswith(
+              "[AI explanation unavailable"
+          ):
+
+              raise SystemExit(
+                  "ERROR: AI provider failed."
+              )
+
+          print(
+              "AI explanation verification PASSED."
+          )
+
+          PY
 
 
       # ============================================================
-      # 16. COLLECT DEPLOYMENT METRICS
+      # 18. COLLECT FINAL DEPLOYGUARD METRICS
       # ============================================================
 
       - name: Collect Deployment Metrics
         run: |
 
           echo "========================================"
+
           echo "FINAL DEPLOYGUARD METRICS"
+
           echo "========================================"
 
-          curl --fail http://localhost:8000/metrics
+          curl --fail \
+            http://localhost:8000/metrics
 
 
       # ============================================================
-      # 17. COLLECT DEPLOYMENT LOGS
+      # 19. DEPLOYMENT LOGS
       # ============================================================
 
       - name: Deployment Logs
         if: always()
         run: |
+
           docker compose logs deployguard-api
 
 
       # ============================================================
-      # 18. STOP DEPLOYGUARD SERVICES
+      # 20. STOP DEPLOYGUARD SERVICES
       # ============================================================
 
       - name: Stop DeployGuard Services
         if: always()
         run: |
+
           docker compose down
