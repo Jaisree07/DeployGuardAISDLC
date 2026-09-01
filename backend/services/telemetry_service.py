@@ -23,3 +23,16 @@ class TelemetryService:
     def get_all(db: Session):
 
         return db.query(Telemetry).all()
+
+    @staticmethod
+    def get_by_deployment_id(
+        db: Session,
+        deployment_id: int
+    ):
+
+        return (
+            db.query(Telemetry)
+            .filter(Telemetry.deployment_id == deployment_id)
+            .order_by(Telemetry.id.desc())
+            .first()
+        )
