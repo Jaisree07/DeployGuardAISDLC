@@ -6,7 +6,12 @@ from backend.parsers.parser import SignalParser
 from backend.storage.sqlite_storage import SQLiteStorage
 
 from backend.monitoring.pushgateway import push_deployment_metrics
-from backend.monitoring.prometheus import DEPLOYMENT_COUNT
+
+from backend.monitoring.prometheus import (
+    DEPLOYMENT_COUNT,
+    DEPLOYMENT_SUCCESS,
+    DEPLOYMENT_FAILURE,
+)
 
 from backend.models.telemetry import Telemetry
 from backend.models.deployment import Deployment
@@ -56,9 +61,19 @@ class DeploymentService:
         SQLiteStorage.save(signal)
 
         # -----------------------------
-        # Prometheus Counter
+        # Prometheus Deployment Metrics
         # -----------------------------
         DEPLOYMENT_COUNT.inc()
+
+        if db_deployment.status.lower() in [
+            "running",
+            "success",
+            "successful",
+            "completed"
+        ]:
+            DEPLOYMENT_SUCCESS.inc()
+        else:
+            DEPLOYMENT_FAILURE.inc()
 
         # -----------------------------
         # Generate Runtime Telemetry
@@ -72,16 +87,39 @@ class DeploymentService:
 
         db.add(db_telemetry)
         db.commit()
+        db.refresh(db_telemetry)
 
         # -----------------------------
-        # Push Metrics to Pushgateway
+        # Telemetry Debug
+        # -----------------------------
+        print("")
+        print("========== TELEMETRY DEBUG ==========")
+        print("Telemetry ID:", db_telemetry.id)
+        print("Deployment ID:", db_telemetry.deployment_id)
+        print("CPU Usage:", db_telemetry.cpu_usage)
+        print("Memory Usage:", db_telemetry.memory_usage)
+        print("Latency:", db_telemetry.latency)
+        print("Build Duration:", db_telemetry.build_duration)
+        print("Deployment Duration:", db_telemetry.deployment_duration)
+        print("Error Count:", db_telemetry.error_count)
+        print("=====================================")
+        print("")
+
+        # -----------------------------
+        # Push Actual Telemetry
+        # to Prometheus Pushgateway
         # -----------------------------
         try:
             push_deployment_metrics(
                 deployment_name=db_deployment.deployment_name,
-                build_duration=12.5,
-                deployment_duration=4.2,
+                cpu_usage=telemetry["cpu_usage"],
+                memory_usage=telemetry["memory_usage"],
+                latency=telemetry["latency"],
+                build_duration=telemetry["build_duration"],
+                deployment_duration=telemetry["deployment_duration"],
+                error_count=telemetry["error_count"],
             )
+
             print("✅ Metrics pushed successfully.")
 
         except Exception as e:
