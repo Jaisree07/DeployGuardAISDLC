@@ -12,6 +12,7 @@ from backend.models.deployment import Deployment
 from backend.models.telemetry import Telemetry
 from backend.api.predict import router as predict_router
 from backend.api.verification import router as verification_router
+from backend.api.dashboard import router as dashboard_router
 from backend.models.prediction import Prediction
 from fastapi.responses import Response
 from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
@@ -42,6 +43,7 @@ app.include_router(signals_router)
 app.include_router(feature_router)
 app.include_router(regressions_router)
 app.include_router(verification_router)
+app.include_router(dashboard_router)
 
 
 @app.get("/", tags=["Application"])

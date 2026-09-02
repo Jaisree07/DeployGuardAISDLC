@@ -6,36 +6,39 @@ load_dotenv()
 
 class AIConfig:
 
-    # Active AI Provider
-    PROVIDER = os.getenv("AI_PROVIDER", "groq").lower()
+    PROVIDER = os.getenv(
+        "AI_PROVIDER",
+        "groq"
+    ).lower()
 
-    # -----------------------------
-    # Groq Configuration
-    # -----------------------------
-    GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+   
+    GROQ_API_KEY = os.getenv(
+        "GROQ_API_KEY",
+        ""
+    )
 
     GROQ_MODEL = os.getenv(
         "GROQ_MODEL",
-        "llama-3.1-8b-instant"
+        "openai/gpt-oss-20b"
     )
 
-    # -----------------------------
-    # Optional Ollama Configuration
-    # (Keep for future local AI support)
-    # -----------------------------
+   
     OLLAMA_URL = os.getenv(
         "OLLAMA_URL",
-        "http://localhost:11434/api/generate"
+        "http://localhost:11434"
     )
 
     OLLAMA_MODEL = os.getenv(
         "OLLAMA_MODEL",
-        "llama3"
+        "phi3:mini"
     )
 
-    # -----------------------------
-    # Provider Fallback Order
-    # -----------------------------
+    
+    FALLBACK_PROVIDER = os.getenv(
+        "AI_FALLBACK_PROVIDER",
+        "ollama"
+    ).lower()
+
     FALLBACK_ORDER = [
-        "groq"
+        FALLBACK_PROVIDER
     ]

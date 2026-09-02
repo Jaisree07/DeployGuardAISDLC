@@ -157,3 +157,42 @@ APPLICATION_UPTIME = Gauge(
     "application_uptime_seconds",
     "DeployGuard API Uptime in Seconds"
 )
+
+
+# =====================================================
+# Requirement 6 — Per-Deployment Dashboard Metrics
+# =====================================================
+
+DEPLOYMENT_INFO = Gauge(
+    "deployguard_deployment_info",
+    "Deployment information for dashboard history",
+    [
+        "deployment_id",
+        "deployment_name",
+        "version",
+        "environment",
+        "status"
+    ]
+)
+
+DEPLOYMENT_RISK = Gauge(
+    "deployguard_deployment_risk",
+    "Predicted ML risk per deployment (0=Low, 1=Medium, 2=High)",
+    [
+        "deployment_id",
+        "deployment_name",
+        "environment"
+    ]
+)
+
+REGRESSION_DETECTED = Gauge(
+    "deployguard_regression_detected",
+    "Regression detected for a deployment",
+    [
+        "deployment_id",
+        "deployment_name",
+        "environment",
+        "pattern",
+        "severity"
+    ]
+)
