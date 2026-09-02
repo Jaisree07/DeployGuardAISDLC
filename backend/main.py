@@ -11,14 +11,19 @@ from backend.database.database import Base, engine
 from backend.models.deployment import Deployment
 from backend.models.telemetry import Telemetry
 from backend.api.predict import router as predict_router
+from backend.api.verification import router as verification_router
 from backend.models.prediction import Prediction
 from fastapi.responses import Response
 from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 
 from backend.middleware.metrics import MetricsMiddleware
+
+
 # Create all database tables
 Base.metadata.create_all(bind=engine)
 SQLiteStorage.initialize()
+
+
 # Initialize FastAPI application
 app = FastAPI(
     title=settings.APP_NAME,
@@ -26,14 +31,18 @@ app = FastAPI(
     version=settings.APP_VERSION
 )
 
+
 # Register API Routers
 app.add_middleware(MetricsMiddleware)
+
 app.include_router(deployment_router)
 app.include_router(telemetry_router)
 app.include_router(predict_router)
 app.include_router(signals_router)
 app.include_router(feature_router)
 app.include_router(regressions_router)
+app.include_router(verification_router)
+
 
 @app.get("/", tags=["Application"])
 def root():
@@ -60,6 +69,7 @@ def health():
     return {
         "status": "Healthy"
     }
+
 
 @app.get("/metrics", include_in_schema=False)
 def metrics():

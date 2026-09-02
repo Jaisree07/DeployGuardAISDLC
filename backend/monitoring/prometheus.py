@@ -1,5 +1,6 @@
 from prometheus_client import Counter, Histogram, Gauge
 
+
 # =====================================================
 # HTTP Metrics
 # =====================================================
@@ -22,6 +23,7 @@ API_ERRORS = Counter(
     ["method", "endpoint", "status_code"]
 )
 
+
 # =====================================================
 # Runtime Metrics
 # =====================================================
@@ -35,6 +37,7 @@ MEMORY_USAGE = Gauge(
     "deployguard_memory_mb",
     "DeployGuard API Memory Usage (MB)"
 )
+
 
 # =====================================================
 # Deployment Metrics
@@ -60,6 +63,42 @@ ACTIVE_DEPLOYMENTS = Gauge(
     "Currently Active Deployments"
 )
 
+
+# =====================================================
+# Deployment Signal Metrics
+# =====================================================
+
+DEPLOYMENT_CPU = Gauge(
+    "deployment_cpu_usage_percent",
+    "Deployment CPU Usage (%)"
+)
+
+DEPLOYMENT_MEMORY = Gauge(
+    "deployment_memory_usage_percent",
+    "Deployment Memory Usage (%)"
+)
+
+DEPLOYMENT_LATENCY = Gauge(
+    "deployment_latency_ms",
+    "Deployment Request Latency (ms)"
+)
+
+DEPLOYMENT_BUILD_DURATION = Gauge(
+    "deployment_build_duration_seconds",
+    "Deployment Build Duration (seconds)"
+)
+
+DEPLOYMENT_DURATION = Gauge(
+    "deployment_duration_seconds",
+    "Deployment Duration (seconds)"
+)
+
+DEPLOYMENT_ERROR_COUNT = Gauge(
+    "deployment_error_count",
+    "Number of Deployment Errors"
+)
+
+
 # =====================================================
 # ML Prediction Metrics
 # =====================================================
@@ -79,6 +118,22 @@ PREDICTION_FAILURE = Counter(
     "Failed Predictions"
 )
 
+
+# =====================================================
+# Deployment Intelligence Metrics
+# =====================================================
+
+PREDICTED_RISK = Gauge(
+    "deployment_predicted_risk",
+    "Predicted Deployment Risk (0=Low, 1=Medium, 2=High)"
+)
+
+ANOMALY_DETECTED = Gauge(
+    "deployment_anomaly_detected",
+    "Deployment Anomaly Detection (0=Normal, 1=Anomaly)"
+)
+
+
 # =====================================================
 # ML Model Metrics
 # =====================================================
@@ -92,6 +147,7 @@ MODEL_VERSION = Gauge(
     "model_version",
     "Current Model Version"
 )
+
 
 # =====================================================
 # Application Metrics

@@ -8,7 +8,6 @@ on:
       - main
       - master
 
-
 jobs:
 
   deployment-verification:
@@ -17,7 +16,6 @@ jobs:
 
     env:
       GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-
 
     steps:
 
@@ -319,7 +317,123 @@ jobs:
 
 
       # ============================================================
-      # 15. RUN ML DEPLOYMENT VERIFICATION
+      # 15. RUN DEPLOYMENT VERIFICATION GATE
+      # ============================================================
+
+      - name: Run Deployment Verification Gate
+        run: |
+
+          DEPLOYMENT_ID=$(python -c "
+          import json
+
+          with open('deployment_response.json') as f:
+              data = json.load(f)
+
+          print(data['id'])
+          ")
+
+          echo "========================================"
+          echo "RUNNING DEPLOYMENT VERIFICATION GATE"
+          echo "========================================"
+
+          echo "Deployment ID: $DEPLOYMENT_ID"
+
+          VERIFICATION_RESPONSE=$(curl --fail \
+            -X POST \
+            "http://localhost:8000/verification/$DEPLOYMENT_ID" \
+            -H "accept: application/json")
+
+          echo ""
+          echo "VERIFICATION RESPONSE:"
+          echo "$VERIFICATION_RESPONSE" | python -m json.tool
+
+          echo "$VERIFICATION_RESPONSE" > verification_response.json
+
+          echo "========================================"
+
+
+      # ============================================================
+      # 16. VALIDATE DEPLOYMENT VERIFICATION DECISION
+      # ============================================================
+
+      - name: Validate Deployment Verification Decision
+        run: |
+
+          python - <<'PY'
+
+          import json
+
+          with open("verification_response.json") as f:
+              data = json.load(f)
+
+          assert data["success"] is True
+
+          assert "deployment_id" in data
+
+          assert "verification" in data
+
+          assert "deployment_status" in data
+
+          verification = data["verification"]
+
+          deployment_status = data["deployment_status"]
+
+          print("")
+          print("========================================")
+          print("DEPLOYMENT VERIFICATION GATE")
+          print("========================================")
+
+          print("Deployment ID:", data["deployment_id"])
+          print("Deployment Name:", data["deployment_name"])
+          print("Environment:", data["environment"])
+          print("Verification:", verification)
+          print("Deployment Status:", deployment_status)
+
+          print("========================================")
+
+          if verification == "VERIFIED":
+
+              assert deployment_status == "VERIFIED"
+
+              print("")
+              print("VERIFICATION RESULT: PASSED")
+              print("Deployment is VERIFIED.")
+              print("Pipeline is allowed to continue.")
+              print("")
+
+          elif verification == "BLOCKED":
+
+              print("")
+              print("VERIFICATION RESULT: BLOCKED")
+
+              blocked_reasons = data.get(
+                  "blocked_reasons",
+                  []
+              )
+
+              print("Blocked Reasons:")
+
+              for reason in blocked_reasons:
+                  print("-", reason)
+
+              print("")
+              print("Deployment failed the verification gate.")
+
+              raise SystemExit(
+                  "ERROR: Deployment verification BLOCKED."
+              )
+
+          else:
+
+              raise SystemExit(
+                  f"ERROR: Unknown verification status: {verification}"
+              )
+
+          PY
+
+
+      # ============================================================
+      # 17. RUN ML DEPLOYMENT VERIFICATION
       #     USING ACTUAL DEPLOYMENT TELEMETRY
       # ============================================================
 
@@ -329,7 +443,6 @@ jobs:
           python - <<'PY'
 
           import json
-          import os
           import urllib.request
 
           with open("telemetry_response.json") as f:
@@ -390,7 +503,7 @@ jobs:
 
 
       # ============================================================
-      # 16. VALIDATE ML PREDICTION
+      # 18. VALIDATE ML PREDICTION
       # ============================================================
 
       - name: Validate ML Prediction
@@ -437,10 +550,11 @@ jobs:
 
 
       # ============================================================
-      # 17. VERIFY AI EXPLANATION
+      # 19. VERIFY AI EXPLANATION
       # ============================================================
 
       - name: Verify AI Explanation
+      # ============================================================
         run: |
 
           python - <<'PY'
@@ -487,7 +601,7 @@ jobs:
 
 
       # ============================================================
-      # 18. COLLECT FINAL DEPLOYGUARD METRICS
+      # 20. COLLECT FINAL DEPLOYGUARD METRICS
       # ============================================================
 
       - name: Collect Deployment Metrics
@@ -504,7 +618,7 @@ jobs:
 
 
       # ============================================================
-      # 19. DEPLOYMENT LOGS
+      # 21. DEPLOYMENT LOGS
       # ============================================================
 
       - name: Deployment Logs
@@ -515,7 +629,7 @@ jobs:
 
 
       # ============================================================
-      # 20. STOP DEPLOYGUARD SERVICES
+      # 22. STOP DEPLOYGUARD SERVICES
       # ============================================================
 
       - name: Stop DeployGuard Services
