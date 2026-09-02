@@ -12,11 +12,6 @@ on:
       - master
 
 jobs:
-
-  # ============================================================
-  # BUILD AND TEST
-  # ============================================================
-
   build-test:
     runs-on: ubuntu-latest
 
@@ -91,11 +86,9 @@ jobs:
           GROQ_MODEL=openai/gpt-oss-20b
           EOF
 
-          echo "Deployment environment configured."
-
 
       # ============================================================
-      # 7. START DOCKER CONTAINERS
+      # 7. START DEPLOYGUARD CONTAINERS
       # ============================================================
 
       - name: Start Containers
@@ -121,7 +114,6 @@ jobs:
           echo "Waiting for DeployGuard API..."
 
           for i in {1..30}; do
-
             if curl -sf http://localhost:8000/health; then
               echo ""
               echo "DeployGuard API is ready."
@@ -130,7 +122,6 @@ jobs:
 
             echo "Waiting... attempt $i/30"
             sleep 2
-
           done
 
           echo "ERROR: DeployGuard API failed to start."
@@ -153,6 +144,7 @@ jobs:
           curl --fail http://localhost:8000/health
 
           echo ""
+
           echo "========================================"
           echo "HEALTH CHECK PASSED"
           echo "========================================"
@@ -171,13 +163,274 @@ jobs:
           curl --fail http://localhost:8000/metrics
 
           echo ""
+
           echo "========================================"
           echo "METRICS CHECK PASSED"
           echo "========================================"
 
 
       # ============================================================
-      # 12. COLLECT DEPLOYGUARD LOGS
+      # 12. REGISTER DEPLOYMENT
+      # ============================================================
+
+      - name: Register Deployment for ML Verification
+        run: |
+          echo "========================================"
+          echo "REGISTERING DEPLOYMENT"
+          echo "========================================"
+
+          curl --fail -X POST \
+            http://localhost:8000/deployments/ \
+            -H "accept: application/json" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "deployment_name": "DeployGuard-CI-Pipeline",
+              "version": "1.0.0",
+              "environment": "QA",
+              "status": "Running"
+            }' \
+            -o deployment_response.json
+
+          echo ""
+          echo "Deployment registration response:"
+          cat deployment_response.json
+
+
+      # ============================================================
+      # 13. EXTRACT DEPLOYMENT ID
+      # ============================================================
+
+      - name: Extract Deployment ID
+        run: |
+          DEPLOYMENT_ID=$(python -c "import json; print(json.load(open('deployment_response.json'))['id'])")
+
+          echo "DEPLOYMENT_ID=$DEPLOYMENT_ID" >> "$GITHUB_ENV"
+
+          echo "Deployment ID: $DEPLOYMENT_ID"
+
+
+      # ============================================================
+      # 14. RETRIEVE DEPLOYMENT TELEMETRY
+      # ============================================================
+
+      - name: Retrieve Deployment Telemetry
+        run: |
+          echo "========================================"
+          echo "DEPLOYMENT TELEMETRY"
+          echo "========================================"
+
+          curl --fail \
+            "http://localhost:8000/telemetry/$DEPLOYMENT_ID" \
+            -o telemetry_response.json
+
+          echo ""
+          echo "Telemetry response:"
+          cat telemetry_response.json
+
+
+      # ============================================================
+      # 15. VALIDATE SIX DEPLOYMENT SIGNALS
+      # ============================================================
+
+      - name: Validate Six Deployment Signals
+        run: |
+          echo "========================================"
+          echo "VALIDATING DEPLOYMENT SIGNALS"
+          echo "========================================"
+
+          python - <<'PY'
+          import json
+
+          with open("telemetry_response.json") as f:
+              data = json.load(f)
+
+          required_signals = [
+              "cpu_usage",
+              "memory_usage",
+              "latency",
+              "build_duration",
+              "deployment_duration",
+              "error_count"
+          ]
+
+          missing = [
+              signal
+              for signal in required_signals
+              if signal not in data
+          ]
+
+          if missing:
+              raise SystemExit(
+                  f"Missing telemetry signals: {missing}"
+              )
+
+          print("All 6 deployment signals collected successfully.")
+
+          print("")
+          print("Deployment Signals:")
+          print(f"CPU Usage: {data['cpu_usage']}")
+          print(f"Memory Usage: {data['memory_usage']}")
+          print(f"Latency: {data['latency']}")
+          print(f"Build Duration: {data['build_duration']}")
+          print(f"Deployment Duration: {data['deployment_duration']}")
+          print(f"Error Count: {data['error_count']}")
+          PY
+
+
+      # ============================================================
+      # 16. RUN ML PREDICTION
+      # ============================================================
+
+      - name: Run ML Prediction
+        run: |
+          echo "========================================"
+          echo "ML DEPLOYMENT PREDICTION"
+          echo "========================================"
+
+          python - <<'PY'
+          import json
+          import requests
+
+          with open("telemetry_response.json") as f:
+              telemetry = json.load(f)
+
+          payload = {
+              "environment": "QA",
+              "cpu_usage": telemetry["cpu_usage"],
+              "memory_usage": telemetry["memory_usage"],
+              "latency": telemetry["latency"],
+              "build_duration": telemetry["build_duration"],
+              "deployment_duration": telemetry["deployment_duration"],
+              "error_count": telemetry["error_count"]
+          }
+
+          response = requests.post(
+              "http://localhost:8000/predict/",
+              json=payload,
+              timeout=120
+          )
+
+          response.raise_for_status()
+
+          result = response.json()
+
+          with open("ci_prediction_response.json", "w") as f:
+              json.dump(result, f, indent=2)
+
+          print(json.dumps(result, indent=2))
+          PY
+
+
+      # ============================================================
+      # 17. RUN DEPLOYGUARD ML VERIFICATION GATE
+      # ============================================================
+
+      - name: Run ML Verification Gate
+        run: |
+          echo "========================================"
+          echo "DEPLOYGUARD ML VERIFICATION GATE"
+          echo "========================================"
+
+          curl --fail -X POST \
+            "http://localhost:8000/verification/$DEPLOYMENT_ID" \
+            -H "accept: application/json" \
+            -o ci_verification_response.json
+
+          echo ""
+          echo "Verification response:"
+          cat ci_verification_response.json
+
+
+      # ============================================================
+      # 18. VALIDATE VERIFICATION DECISION
+      # ============================================================
+
+      - name: Validate Verification Decision
+        run: |
+          python - <<'PY'
+          import json
+          import sys
+
+          with open("ci_verification_response.json") as f:
+              result = json.load(f)
+
+          decision = result.get("verification")
+
+          print("")
+          print("========================================")
+          print(f"ML VERIFICATION DECISION: {decision}")
+          print("========================================")
+
+          if decision == "VERIFIED":
+              print("DeployGuard ML verification PASSED.")
+              sys.exit(0)
+
+          if decision == "BLOCKED":
+              print("DeployGuard ML verification BLOCKED the deployment.")
+              print("")
+              print("Blocked reasons:")
+
+              for reason in result.get("blocked_reasons", []):
+                  print(f"- {reason}")
+
+              sys.exit(1)
+
+          print("ERROR: Unknown verification decision.")
+          sys.exit(1)
+          PY
+
+
+      # ============================================================
+      # 19. VALIDATE ML PREDICTION RESULT
+      # ============================================================
+
+      - name: Validate ML Prediction Result
+        run: |
+          echo "========================================"
+          echo "VALIDATING ML PREDICTION"
+          echo "========================================"
+
+          python - <<'PY'
+          import json
+
+          with open("ci_prediction_response.json") as f:
+              result = json.load(f)
+
+          data = result.get("data", {})
+
+          required_fields = [
+              "prediction",
+              "confidence",
+              "risk",
+              "anomaly",
+              "model_version",
+              "ai_explanation"
+          ]
+
+          missing = [
+              field
+              for field in required_fields
+              if field not in data
+          ]
+
+          if missing:
+              raise SystemExit(
+                  f"Missing ML prediction fields: {missing}"
+              )
+
+          print("ML prediction validated successfully.")
+          print("")
+          print(f"Prediction: {data['prediction']}")
+          print(f"Confidence: {data['confidence']}")
+          print(f"Risk: {data['risk']}")
+          print(f"Anomaly: {data['anomaly']}")
+          print(f"Model Version: {data['model_version']}")
+          print(f"AI Explanation: {data['ai_explanation']}")
+          PY
+
+
+      # ============================================================
+      # 20. DEPLOYMENT LOGS
       # ============================================================
 
       - name: Deployment Logs
@@ -191,7 +444,7 @@ jobs:
 
 
       # ============================================================
-      # 13. STOP CONTAINERS
+      # 21. STOP CONTAINERS
       # ============================================================
 
       - name: Stop Containers
