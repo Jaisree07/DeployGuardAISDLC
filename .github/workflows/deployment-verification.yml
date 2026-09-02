@@ -88,6 +88,9 @@ jobs:
           AI_PROVIDER=groq
           GROQ_API_KEY=${GROQ_API_KEY}
           GROQ_MODEL=openai/gpt-oss-20b
+          OLLAMA_URL=http://host.docker.internal:11434
+          OLLAMA_MODEL=phi3:mini
+          AI_FALLBACK_PROVIDER=ollama
           EOF
 
 
@@ -120,16 +123,12 @@ jobs:
           for i in {1..30}; do
 
             if curl -sf http://localhost:8000/health; then
-
               echo ""
               echo "DeployGuard API is ready."
-
               exit 0
-
             fi
 
             echo "Waiting... attempt $i/30"
-
             sleep 2
 
           done
@@ -162,7 +161,6 @@ jobs:
             }')
 
           echo "Deployment Registration Response:"
-
           echo "$RESPONSE"
 
           echo "$RESPONSE" | python -m json.tool
@@ -194,16 +192,13 @@ jobs:
           ]
 
           for field in required_fields:
-
               assert field in data, \
                   f"Missing deployment field: {field}"
 
           assert data["environment"] == "QA"
-
           assert data["status"] == "Running"
 
           print("")
-
           print("========================================")
           print("DEPLOYMENT REGISTRATION PASSED")
           print("========================================")
@@ -223,6 +218,16 @@ jobs:
       # ============================================================
       # 12. COLLECT DEPLOYMENT TELEMETRY
       # ============================================================
+      #
+      # NOTE:
+      # This creates telemetry for the CURRENT deployment ID.
+      # It prevents verification from accidentally using an old
+      # deployment/telemetry record.
+      #
+      # This is temporary CI telemetry until the real application
+      # deployment is connected to DeployGuard.
+      #
+      # ============================================================
 
       - name: Collect Deployment Telemetry
         run: |
@@ -236,20 +241,36 @@ jobs:
           print(data['id'])
           ")
 
+          echo "========================================"
+          echo "COLLECTING TELEMETRY"
+          echo "========================================"
+
           echo "Deployment ID: $DEPLOYMENT_ID"
 
-          echo "Collecting telemetry for deployment..."
-
           TELEMETRY_RESPONSE=$(curl --fail \
-            http://localhost:8000/telemetry/$DEPLOYMENT_ID)
+            -X POST \
+            http://localhost:8000/telemetry/ \
+            -H "accept: application/json" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"deployment_id\": $DEPLOYMENT_ID,
+              \"cpu_usage\": 47.44,
+              \"memory_usage\": 72.08,
+              \"latency\": 210.71,
+              \"build_duration\": 97.37,
+              \"deployment_duration\": 72.75,
+              \"error_count\": 2
+            }")
 
+          echo ""
           echo "Telemetry Response:"
-
           echo "$TELEMETRY_RESPONSE"
 
           echo "$TELEMETRY_RESPONSE" | python -m json.tool
 
           echo "$TELEMETRY_RESPONSE" > telemetry_response.json
+
+          echo "========================================"
 
 
       # ============================================================
@@ -263,8 +284,13 @@ jobs:
 
           import json
 
+          with open("deployment_response.json") as f:
+              deployment = json.load(f)
+
           with open("telemetry_response.json") as f:
-              data = json.load(f)
+              telemetry = json.load(f)
+
+          deployment_id = deployment["id"]
 
           required_fields = [
               "id",
@@ -279,26 +305,24 @@ jobs:
           ]
 
           for field in required_fields:
-
-              assert field in data, \
+              assert field in telemetry, \
                   f"Missing telemetry field: {field}"
 
-          assert data["deployment_id"] > 0
+          assert telemetry["deployment_id"] == deployment_id
 
           print("")
-
           print("========================================")
           print("DEPLOYMENT TELEMETRY VALIDATION PASSED")
           print("========================================")
 
-          print("Deployment ID:", data["deployment_id"])
-          print("CPU Usage:", data["cpu_usage"])
-          print("Memory Usage:", data["memory_usage"])
-          print("Latency:", data["latency"])
-          print("Build Duration:", data["build_duration"])
-          print("Deployment Duration:", data["deployment_duration"])
-          print("Error Count:", data["error_count"])
-          print("Collected At:", data["collected_at"])
+          print("Deployment ID:", telemetry["deployment_id"])
+          print("CPU Usage:", telemetry["cpu_usage"])
+          print("Memory Usage:", telemetry["memory_usage"])
+          print("Latency:", telemetry["latency"])
+          print("Build Duration:", telemetry["build_duration"])
+          print("Deployment Duration:", telemetry["deployment_duration"])
+          print("Error Count:", telemetry["error_count"])
+          print("Collected At:", telemetry["collected_at"])
 
           print("========================================")
 
@@ -312,15 +336,30 @@ jobs:
       - name: Verify Metrics Endpoint
         run: |
 
+          echo "Checking DeployGuard metrics endpoint..."
+
           curl --fail \
             http://localhost:8000/metrics
+
+          echo ""
+          echo "Metrics endpoint verification PASSED."
 
 
       # ============================================================
       # 15. RUN DEPLOYMENT VERIFICATION GATE
       # ============================================================
+      #
+      # IMPORTANT:
+      # Do NOT use curl --fail here.
+      #
+      # We need to capture the response body even if the API returns
+      # HTTP 500 so that GitHub Actions shows the actual backend
+      # exception.
+      #
+      # ============================================================
 
       - name: Run Deployment Verification Gate
+        id: verification_gate
         run: |
 
           DEPLOYMENT_ID=$(python -c "
@@ -338,18 +377,56 @@ jobs:
 
           echo "Deployment ID: $DEPLOYMENT_ID"
 
-          VERIFICATION_RESPONSE=$(curl --fail \
+          HTTP_STATUS=$(curl \
+            -s \
+            -o verification_response.json \
+            -w "%{http_code}" \
             -X POST \
             "http://localhost:8000/verification/$DEPLOYMENT_ID" \
             -H "accept: application/json")
 
           echo ""
+          echo "HTTP STATUS: $HTTP_STATUS"
+
+          echo ""
           echo "VERIFICATION RESPONSE:"
-          echo "$VERIFICATION_RESPONSE" | python -m json.tool
 
-          echo "$VERIFICATION_RESPONSE" > verification_response.json
+          cat verification_response.json
 
+          echo ""
+
+          if command -v python >/dev/null 2>&1; then
+            python -m json.tool verification_response.json || true
+          fi
+
+          echo ""
           echo "========================================"
+
+          if [ "$HTTP_STATUS" -ge 500 ]; then
+
+            echo "ERROR: DeployGuard verification API returned HTTP $HTTP_STATUS."
+
+            echo ""
+            echo "========================================"
+            echo "DEPLOYGUARD API LOGS"
+            echo "========================================"
+
+            docker compose logs --tail=200 deployguard-api || true
+
+            echo ""
+            echo "========================================"
+
+            exit 1
+          fi
+
+          if [ "$HTTP_STATUS" -ge 400 ]; then
+
+            echo "ERROR: DeployGuard verification request failed."
+
+            exit 1
+          fi
+
+          echo "Deployment verification API request completed successfully."
 
 
       # ============================================================
@@ -369,13 +446,10 @@ jobs:
           assert data["success"] is True
 
           assert "deployment_id" in data
-
           assert "verification" in data
-
           assert "deployment_status" in data
 
           verification = data["verification"]
-
           deployment_status = data["deployment_status"]
 
           print("")
@@ -434,7 +508,7 @@ jobs:
 
       # ============================================================
       # 17. RUN ML DEPLOYMENT VERIFICATION
-      #     USING ACTUAL DEPLOYMENT TELEMETRY
+      #     USING CURRENT DEPLOYMENT TELEMETRY
       # ============================================================
 
       - name: Run ML Deployment Verification
@@ -460,7 +534,7 @@ jobs:
 
           print("")
           print("========================================")
-          print("ACTUAL TELEMETRY USED FOR ML")
+          print("CURRENT DEPLOYMENT TELEMETRY USED FOR ML")
           print("========================================")
 
           print(json.dumps(payload, indent=2))
@@ -523,17 +597,12 @@ jobs:
           result = data["data"]
 
           assert "prediction" in result
-
           assert "confidence" in result
-
           assert "risk" in result
-
           assert "anomaly" in result
-
           assert "model_version" in result
 
           print("")
-
           print("========================================")
           print("ML DEPLOYMENT VERIFICATION PASSED")
           print("========================================")
@@ -554,7 +623,6 @@ jobs:
       # ============================================================
 
       - name: Verify AI Explanation
-      # ============================================================
         run: |
 
           python - <<'PY'
@@ -570,7 +638,6 @@ jobs:
           )
 
           print("")
-
           print("========================================")
           print("AI EXPLANATION")
           print("========================================")
@@ -580,7 +647,6 @@ jobs:
           print("========================================")
 
           if not explanation:
-
               raise SystemExit(
                   "ERROR: AI explanation is empty."
               )
@@ -588,7 +654,6 @@ jobs:
           if explanation.startswith(
               "[AI explanation unavailable"
           ):
-
               raise SystemExit(
                   "ERROR: AI provider failed."
               )
@@ -604,17 +669,18 @@ jobs:
       # 20. COLLECT FINAL DEPLOYGUARD METRICS
       # ============================================================
 
-      - name: Collect Deployment Metrics
+      - name: Collect Final DeployGuard Metrics
         run: |
 
           echo "========================================"
-
           echo "FINAL DEPLOYGUARD METRICS"
-
           echo "========================================"
 
           curl --fail \
             http://localhost:8000/metrics
+
+          echo ""
+          echo "========================================"
 
 
       # ============================================================
@@ -625,7 +691,13 @@ jobs:
         if: always()
         run: |
 
-          docker compose logs deployguard-api
+          echo "========================================"
+          echo "DEPLOYGUARD API LOGS"
+          echo "========================================"
+
+          docker compose logs --tail=200 deployguard-api
+
+          echo "========================================"
 
 
       # ============================================================
