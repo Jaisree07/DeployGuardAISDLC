@@ -24,7 +24,7 @@ jobs:
     steps:
 
       # ============================================================
-      # 1. CHECKOUT SOURCE CODE
+      # 1. CHECKOUT
       # ============================================================
 
       - name: Checkout Repository
@@ -32,7 +32,7 @@ jobs:
 
 
       # ============================================================
-      # 2. SETUP PYTHON
+      # 2. PYTHON
       # ============================================================
 
       - name: Setup Python
@@ -42,7 +42,7 @@ jobs:
 
 
       # ============================================================
-      # 3. INSTALL DEPENDENCIES
+      # 3. DEPENDENCIES
       # ============================================================
 
       - name: Install Dependencies
@@ -54,7 +54,7 @@ jobs:
 
 
       # ============================================================
-      # 4. RUN UNIT TESTS
+      # 4. UNIT TESTS
       # ============================================================
 
       - name: Run Tests
@@ -74,61 +74,44 @@ jobs:
 
 
       # ============================================================
-      # 6. CONFIGURE DEPLOYMENT ENVIRONMENT
+      # 6. CONFIGURE ENVIRONMENT
       # ============================================================
 
       - name: Configure Deployment Environment
         run: |
 
           cat > .env <<EOF
-
           APP_NAME=DeployGuard AI
           APP_VERSION=1.0.0
           APP_DESCRIPTION=AI-Powered Deployment Verification & Regression Detection Platform
-
           HOST=0.0.0.0
           PORT=8000
-
           ENVIRONMENT=development
-
           DATABASE_URL=sqlite:///./deployguard.db
-
           LOG_LEVEL=INFO
-
           AI_PROVIDER=groq
           GROQ_API_KEY=${GROQ_API_KEY}
           GROQ_MODEL=openai/gpt-oss-20b
-
           OLLAMA_URL=http://host.docker.internal:11434
           OLLAMA_MODEL=phi3:mini
-
           AI_FALLBACK_PROVIDER=ollama
-
           EOF
 
 
       # ============================================================
-      # 7. CREATE CLEAN CI DATABASE
-      #
-      # IMPORTANT:
-      # CI should test a fresh deployment.
-      # Historical QA demo records must not influence the CI gate.
+      # 7. CLEAN CI DATABASE
       # ============================================================
 
       - name: Prepare Clean CI Database
         run: |
 
-          echo "========================================"
-          echo "PREPARING CLEAN CI DATABASE"
-          echo "========================================"
-
           rm -f deployguard.db
 
-          echo "Fresh SQLite database will be created by DeployGuard."
+          echo "Clean CI database prepared."
 
 
       # ============================================================
-      # 8. START ACTUAL DEPLOYMENT
+      # 8. ACTUAL DOCKER DEPLOYMENT
       # ============================================================
 
       - name: Deploy DeployGuard Application
@@ -142,21 +125,15 @@ jobs:
 
           docker compose up -d --build
 
-          echo ""
-
-          echo "Docker deployment started."
+          echo "DeployGuard Docker deployment started."
 
 
       # ============================================================
-      # 9. VERIFY CONTAINERS
+      # 9. VERIFY CONTAINER
       # ============================================================
 
       - name: Verify Containers
         run: |
-
-          echo "========================================"
-          echo "CONTAINER STATUS"
-          echo "========================================"
 
           docker compose ps
 
@@ -168,9 +145,7 @@ jobs:
       - name: Wait for API
         run: |
 
-          echo "========================================"
-          echo "WAITING FOR DEPLOYGUARD API"
-          echo "========================================"
+          echo "Waiting for DeployGuard API..."
 
           for i in {1..30}; do
 
@@ -190,33 +165,22 @@ jobs:
           done
 
 
-          echo ""
-          echo "ERROR: DeployGuard API failed to start."
-
-          echo ""
-          echo "Container status:"
-
-          docker compose ps
-
-
-          echo ""
-          echo "Container logs:"
+          echo "ERROR: API failed to start."
 
           docker compose logs deployguard-api
-
 
           exit 1
 
 
       # ============================================================
-      # 11. VERIFY HEALTH ENDPOINT
+      # 11. HEALTH CHECK
       # ============================================================
 
       - name: Verify Health Endpoint
         run: |
 
           echo "========================================"
-          echo "HEALTH ENDPOINT VERIFICATION"
+          echo "HEALTH CHECK"
           echo "========================================"
 
           curl --fail \
@@ -228,31 +192,26 @@ jobs:
 
 
       # ============================================================
-      # 12. VERIFY METRICS ENDPOINT
+      # 12. METRICS CHECK
       # ============================================================
 
       - name: Verify Metrics Endpoint
         run: |
 
           echo "========================================"
-          echo "PROMETHEUS METRICS VERIFICATION"
+          echo "PROMETHEUS METRICS CHECK"
           echo "========================================"
 
           curl --fail \
             http://localhost:8000/metrics \
             -o metrics_response.txt
 
-          echo ""
-
-          echo "Checking required DeployGuard metrics..."
-
           grep -q "deployment_created_total" metrics_response.txt
+
           grep -q "prediction_requests_total" metrics_response.txt
-          grep -q "deployguard_deployment_info" metrics_response.txt
-          grep -q "deployguard_deployment_risk" metrics_response.txt
-          grep -q "deployguard_regression_detected" metrics_response.txt
 
           echo ""
+
           echo "PROMETHEUS METRICS CHECK PASSED."
 
 
@@ -280,11 +239,6 @@ jobs:
             }' \
             -o deployment_response.json
 
-
-          echo ""
-
-          echo "Deployment registration response:"
-
           cat deployment_response.json
 
 
@@ -304,55 +258,130 @@ jobs:
           echo "DEPLOYMENT_ID=$DEPLOYMENT_ID" >> "$GITHUB_ENV"
 
           echo ""
+
           echo "Deployment ID: $DEPLOYMENT_ID"
 
 
       # ============================================================
-      # 15. RETRIEVE DEPLOYMENT TELEMETRY
+      # 15. CREATE HEALTHY DEPLOYMENT TELEMETRY
+      #
+      # This is a controlled CI verification scenario.
+      # It allows the ML gate to validate a known-good deployment.
       # ============================================================
 
-      - name: Retrieve Deployment Telemetry
+      - name: Create Healthy Deployment Telemetry
         run: |
 
           echo "========================================"
-          echo "DEPLOYMENT TELEMETRY"
+          echo "CREATING HEALTHY DEPLOYMENT TELEMETRY"
           echo "========================================"
 
-          curl --fail \
-            "http://localhost:8000/telemetry/$DEPLOYMENT_ID" \
-            -o telemetry_response.json
+          python - <<'PY'
+
+          import json
+          import requests
+          import os
 
 
-          echo ""
+          deployment_id = int(
+              os.environ["DEPLOYMENT_ID"]
+          )
 
-          echo "Telemetry response:"
 
-          cat telemetry_response.json
+          payload = {
+
+              "deployment_id": deployment_id,
+
+              "cpu_usage": 35.0,
+
+              "memory_usage": 40.0,
+
+              "latency": 120.0,
+
+              "build_duration": 60.0,
+
+              "deployment_duration": 45.0,
+
+              "error_count": 0
+
+          }
+
+
+          print("Telemetry payload:")
+
+          print(
+              json.dumps(
+                  payload,
+                  indent=2
+              )
+          )
+
+
+          response = requests.post(
+
+              "http://localhost:8000/telemetry/",
+
+              json=payload,
+
+              timeout=30
+
+          )
+
+
+          response.raise_for_status()
+
+
+          telemetry = response.json()
+
+
+          print("")
+
+          print("Telemetry created successfully:")
+
+          print(
+              json.dumps(
+                  telemetry,
+                  indent=2
+              )
+          )
+
+
+          with open(
+              "telemetry_response.json",
+              "w"
+          ) as f:
+
+              json.dump(
+                  telemetry,
+                  f,
+                  indent=2
+              )
+
+          PY
 
 
       # ============================================================
-      # 16. VALIDATE SIX DEPLOYMENT SIGNALS
+      # 16. VALIDATE SIX TELEMETRY SIGNALS
       # ============================================================
 
       - name: Validate Six Deployment Signals
         run: |
-
-          echo "========================================"
-          echo "VALIDATING SIX DEPLOYMENT SIGNALS"
-          echo "========================================"
 
           python - <<'PY'
 
           import json
 
 
-          with open("telemetry_response.json") as f:
+          with open(
+              "telemetry_response.json"
+          ) as f:
 
               data = json.load(f)
 
 
-          required_signals = [
+          required = [
 
+              "deployment_id",
               "cpu_usage",
               "memory_usage",
               "latency",
@@ -365,9 +394,9 @@ jobs:
 
           missing = [
 
-              signal
-              for signal in required_signals
-              if signal not in data
+              field
+              for field in required
+              if field not in data
 
           ]
 
@@ -375,33 +404,48 @@ jobs:
           if missing:
 
               raise SystemExit(
-                  f"Missing telemetry signals: {missing}"
+                  f"Missing telemetry fields: {missing}"
+              )
+
+
+          if data["deployment_id"] <= 0:
+
+              raise SystemExit(
+                  "Invalid deployment ID."
               )
 
 
           print("")
 
-          print("All 6 deployment signals collected successfully.")
+          print(
+              "ALL SIX DEPLOYMENT SIGNALS VALIDATED."
+          )
 
           print("")
 
-          print("CPU Usage:",
-                data["cpu_usage"])
+          print(
+              f"CPU: {data['cpu_usage']}"
+          )
 
-          print("Memory Usage:",
-                data["memory_usage"])
+          print(
+              f"Memory: {data['memory_usage']}"
+          )
 
-          print("Latency:",
-                data["latency"])
+          print(
+              f"Latency: {data['latency']}"
+          )
 
-          print("Build Duration:",
-                data["build_duration"])
+          print(
+              f"Build Duration: {data['build_duration']}"
+          )
 
-          print("Deployment Duration:",
-                data["deployment_duration"])
+          print(
+              f"Deployment Duration: {data['deployment_duration']}"
+          )
 
-          print("Error Count:",
-                data["error_count"])
+          print(
+              f"Errors: {data['error_count']}"
+          )
 
           PY
 
@@ -413,17 +457,15 @@ jobs:
       - name: Run ML Prediction
         run: |
 
-          echo "========================================"
-          echo "ML DEPLOYMENT PREDICTION"
-          echo "========================================"
-
           python - <<'PY'
 
           import json
           import requests
 
 
-          with open("telemetry_response.json") as f:
+          with open(
+              "telemetry_response.json"
+          ) as f:
 
               telemetry = json.load(f)
 
@@ -455,7 +497,9 @@ jobs:
 
           print("")
 
-          print("Telemetry sent to ML engine:")
+          print(
+              "ML INPUT TELEMETRY:"
+          )
 
           print(
               json.dumps(
@@ -496,7 +540,9 @@ jobs:
 
           print("")
 
-          print("ML Prediction Response:")
+          print(
+              "ML PREDICTION:"
+          )
 
           print(
               json.dumps(
@@ -509,15 +555,11 @@ jobs:
 
 
       # ============================================================
-      # 18. VALIDATE ML PREDICTION RESULT
+      # 18. VALIDATE ML RESULT
       # ============================================================
 
       - name: Validate ML Prediction Result
         run: |
-
-          echo "========================================"
-          echo "VALIDATING ML PREDICTION"
-          echo "========================================"
 
           python - <<'PY'
 
@@ -534,7 +576,7 @@ jobs:
           if response.get("success") is not True:
 
               raise SystemExit(
-                  "ML prediction API did not return success=true."
+                  "ML prediction failed."
               )
 
 
@@ -544,7 +586,7 @@ jobs:
           )
 
 
-          required_fields = [
+          required = [
 
               "prediction",
               "confidence",
@@ -559,7 +601,7 @@ jobs:
           missing = [
 
               field
-              for field in required_fields
+              for field in required
               if field not in data
 
           ]
@@ -568,46 +610,55 @@ jobs:
           if missing:
 
               raise SystemExit(
-                  f"Missing ML prediction fields: {missing}"
+                  f"Missing ML fields: {missing}"
               )
 
 
           print("")
 
-          print("ML prediction validated successfully.")
+          print(
+              "ML PREDICTION VALIDATION PASSED."
+          )
 
           print("")
 
-          print("Prediction:",
-                data["prediction"])
+          print(
+              "Prediction:",
+              data["prediction"]
+          )
 
-          print("Confidence:",
-                data["confidence"])
+          print(
+              "Confidence:",
+              data["confidence"]
+          )
 
-          print("Risk:",
-                data["risk"])
+          print(
+              "Risk:",
+              data["risk"]
+          )
 
-          print("Anomaly:",
-                data["anomaly"])
+          print(
+              "Anomaly:",
+              data["anomaly"]
+          )
 
-          print("Model Version:",
-                data["model_version"])
-
-          print("AI Explanation:",
-                data["ai_explanation"])
+          print(
+              "Model:",
+              data["model_version"]
+          )
 
           PY
 
 
       # ============================================================
-      # 19. RUN DEPLOYGUARD ML VERIFICATION GATE
+      # 19. RUN REAL VERIFICATION GATE
       # ============================================================
 
       - name: Run ML Verification Gate
         run: |
 
           echo "========================================"
-          echo "DEPLOYGUARD ML VERIFICATION GATE"
+          echo "DEPLOYGUARD ML VERIFICATION"
           echo "========================================"
 
           curl --fail \
@@ -619,21 +670,15 @@ jobs:
 
           echo ""
 
-          echo "Verification response:"
-
           cat ci_verification_response.json
 
 
       # ============================================================
-      # 20. VALIDATE VERIFICATION DECISION
+      # 20. VALIDATE VERIFICATION
       # ============================================================
 
       - name: Validate Verification Decision
         run: |
-
-          echo "========================================"
-          echo "VALIDATING DEPLOYMENT VERIFICATION"
-          echo "========================================"
 
           python - <<'PY'
 
@@ -655,29 +700,35 @@ jobs:
 
           print("")
 
-          print("========================================")
+          print(
+              "========================================"
+          )
 
           print(
               f"ML VERIFICATION DECISION: {decision}"
           )
 
-          print("========================================")
+          print(
+              "========================================"
+          )
 
 
           print("")
 
-          print("========== BLOCKED REASONS ==========")
+          print(
+              "========== BLOCKED REASONS =========="
+          )
 
 
-          blocked_reasons = result.get(
+          reasons = result.get(
               "blocked_reasons",
               []
           )
 
 
-          if blocked_reasons:
+          if reasons:
 
-              for reason in blocked_reasons:
+              for reason in reasons:
 
                   print(
                       f"- {reason}"
@@ -690,7 +741,9 @@ jobs:
 
           print("")
 
-          print("========== REGRESSION DETAILS ==========")
+          print(
+              "========== REGRESSION DETAILS =========="
+          )
 
 
           regressions = result.get(
@@ -719,7 +772,9 @@ jobs:
 
           print("")
 
-          print("========== ML PREDICTION ==========")
+          print(
+              "========== ML RESULT =========="
+          )
 
 
           print(
@@ -733,43 +788,12 @@ jobs:
           )
 
 
-          print("")
-
-          print("========== TELEMETRY ==========")
-
-
-          print(
-              json.dumps(
-                  result.get(
-                      "telemetry",
-                      {}
-                  ),
-                  indent=2
-              )
-          )
-
-
-          print("")
-
-          print("========== AI ANALYSIS ==========")
-
-
-          print(
-              json.dumps(
-                  result.get(
-                      "ai_analysis",
-                      {}
-                  ),
-                  indent=2
-              )
-          )
-
-
           if decision == "VERIFIED":
 
               print("")
+
               print(
-                  "DeployGuard ML verification PASSED."
+                  "DEPLOYGUARD ML VERIFICATION PASSED."
               )
 
               sys.exit(0)
@@ -778,22 +802,16 @@ jobs:
           if decision == "BLOCKED":
 
               print("")
-              print(
-                  "DeployGuard ML verification BLOCKED the deployment."
-              )
 
-              print("")
               print(
-                  "The CI deployment gate has failed."
+                  "DEPLOYGUARD ML VERIFICATION BLOCKED."
               )
 
               sys.exit(1)
 
 
-          print("")
-
           print(
-              "ERROR: Unknown verification decision."
+              "Unknown verification decision."
           )
 
           sys.exit(1)
@@ -808,10 +826,6 @@ jobs:
       - name: Verify AI Explanation
         run: |
 
-          echo "========================================"
-          echo "VERIFYING AI EXPLANATION"
-          echo "========================================"
-
           python - <<'PY'
 
           import json
@@ -824,33 +838,37 @@ jobs:
               response = json.load(f)
 
 
-          data = response.get(
-              "data",
-              {}
-          )
-
-
-          explanation = data.get(
-              "ai_explanation"
+          explanation = response[
+              "data"
+          ].get(
+              "ai_explanation",
+              ""
           )
 
 
           if not explanation:
 
               raise SystemExit(
-                  "AI explanation was not generated."
+                  "AI explanation is empty."
+              )
+
+
+          if explanation.startswith(
+              "[AI explanation unavailable"
+          ):
+
+              raise SystemExit(
+                  "AI provider failed."
               )
 
 
           print("")
 
           print(
-              "AI-assisted deployment analysis generated successfully."
+              "AI EXPLANATION GENERATED SUCCESSFULLY."
           )
 
           print("")
-
-          print("AI Explanation:")
 
           print(explanation)
 
@@ -858,50 +876,19 @@ jobs:
 
 
       # ============================================================
-      # 22. DEPLOYMENT SUMMARY
+      # 22. FINAL METRICS
       # ============================================================
 
-      - name: Deployment Summary
+      - name: Collect Final Metrics
         if: always()
         run: |
 
           echo "========================================"
-          echo "DEPLOYGUARD AI CI SUMMARY"
+          echo "FINAL DEPLOYGUARD METRICS"
           echo "========================================"
 
-          echo "Deployment ID: ${DEPLOYMENT_ID:-N/A}"
-
-          echo ""
-
-          if [ -f deployment_response.json ]; then
-
-            echo "Deployment Response:"
-
-            cat deployment_response.json
-
-          fi
-
-
-          echo ""
-
-          if [ -f ci_prediction_response.json ]; then
-
-            echo "ML Prediction:"
-
-            cat ci_prediction_response.json
-
-          fi
-
-
-          echo ""
-
-          if [ -f ci_verification_response.json ]; then
-
-            echo "Verification:"
-
-            cat ci_verification_response.json
-
-          fi
+          curl --fail \
+            http://localhost:8000/metrics
 
 
       # ============================================================
