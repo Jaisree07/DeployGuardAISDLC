@@ -55,7 +55,7 @@ DEPLOYMENT_SUCCESS = Counter(
 
 DEPLOYMENT_FAILURE = Counter(
     "deployment_failure_total",
-    "Failed Deployments"
+    "Failed or Blocked Deployments"
 )
 
 ACTIVE_DEPLOYMENTS = Gauge(
@@ -110,12 +110,12 @@ PREDICTION_COUNT = Counter(
 
 PREDICTION_SUCCESS = Counter(
     "prediction_success_total",
-    "Successful Predictions"
+    "Successful Healthy Predictions"
 )
 
 PREDICTION_FAILURE = Counter(
     "prediction_failure_total",
-    "Failed Predictions"
+    "Failed Deployment Predictions"
 )
 
 
@@ -175,6 +175,7 @@ DEPLOYMENT_INFO = Gauge(
     ]
 )
 
+
 DEPLOYMENT_RISK = Gauge(
     "deployguard_deployment_risk",
     "Predicted ML risk per deployment (0=Low, 1=Medium, 2=High)",
@@ -184,6 +185,7 @@ DEPLOYMENT_RISK = Gauge(
         "environment"
     ]
 )
+
 
 REGRESSION_DETECTED = Gauge(
     "deployguard_regression_detected",
