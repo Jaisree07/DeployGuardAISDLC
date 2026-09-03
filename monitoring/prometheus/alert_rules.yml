@@ -1,0 +1,70 @@
+groups:
+  - name: deployguard-alerts
+    interval: 15s
+
+    rules:
+
+      # ---------------------------------------------------------
+      # CRITICAL: Deployment blocked
+      # ---------------------------------------------------------
+      - alert: DeploymentBlocked
+        expr: increase(deployment_failure_total[5m]) > 0
+        for: 15s
+        labels:
+          severity: critical
+          service: deployguard
+        annotations:
+          summary: "Deployment blocked by DeployGuard"
+          description: "A deployment was blocked because DeployGuard detected deployment risk, anomaly, or regression."
+
+      # ---------------------------------------------------------
+      # CRITICAL: High ML deployment risk
+      # ---------------------------------------------------------
+      - alert: HighDeploymentRisk
+        expr: deployment_predicted_risk >= 2
+        for: 15s
+        labels:
+          severity: critical
+          service: deployguard
+        annotations:
+          summary: "High deployment risk detected"
+          description: "DeployGuard ML has classified the current deployment risk as HIGH or CRITICAL."
+
+      # ---------------------------------------------------------
+      # WARNING: Anomaly detected
+      # ---------------------------------------------------------
+      - alert: DeploymentAnomaly
+        expr: deployment_anomaly_detected == 1
+        for: 15s
+        labels:
+          severity: warning
+          service: deployguard
+        annotations:
+          summary: "Deployment anomaly detected"
+          description: "Isolation Forest detected anomalous deployment behaviour."
+
+      # ---------------------------------------------------------
+      # WARNING: Regression detected
+      # ---------------------------------------------------------
+      - alert: DeploymentRegression
+        expr: deployguard_regression_detected == 1
+        for: 15s
+        labels:
+          severity: warning
+          service: deployguard
+        annotations:
+          summary: "Deployment regression detected"
+          description: "DeployGuard detected a performance or reliability regression."
+
+      # ---------------------------------------------------------
+      # WARNING: High latency
+      # ---------------------------------------------------------
+      - alert: HighDeploymentLatency
+        expr: deployment_latency_ms > 500
+        for: 30s
+        labels:
+          severity: warning
+          service: deployguard
+        annotations:
+          summary: "High deployment latency"
+          description: "Deployment latency has exceeded the 500ms threshold."
