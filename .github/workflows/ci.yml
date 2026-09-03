@@ -887,8 +887,56 @@ jobs:
           echo "FINAL DEPLOYGUARD METRICS"
           echo "========================================"
 
-          curl --fail \
-            http://localhost:8000/metrics
+          echo ""
+          echo "Checking DeployGuard container status..."
+          echo ""
+
+          docker compose ps
+
+          echo ""
+          echo "Checking DeployGuard API health..."
+          echo ""
+
+          if curl --silent --show-error --fail \
+            --max-time 10 \
+            http://localhost:8000/health; then
+
+            echo ""
+            echo "DeployGuard API is available."
+            echo ""
+
+            echo "========================================"
+            echo "FINAL PROMETHEUS METRICS"
+            echo "========================================"
+
+            curl --silent --show-error --fail \
+              --max-time 10 \
+              http://localhost:8000/metrics
+
+            echo ""
+            echo "========================================"
+            echo "FINAL METRICS COLLECTION COMPLETED"
+            echo "========================================"
+
+          else
+
+            echo ""
+            echo "WARNING: DeployGuard API is unavailable."
+            echo "Final metrics could not be collected."
+            echo ""
+
+            echo "========================================"
+            echo "RECENT DEPLOYGUARD API LOGS"
+            echo "========================================"
+
+            docker compose logs --tail=100 deployguard-api || true
+
+            echo ""
+            echo "========================================"
+            echo "METRICS COLLECTION SKIPPED"
+            echo "========================================"
+
+          fi
 
 
       # ============================================================
