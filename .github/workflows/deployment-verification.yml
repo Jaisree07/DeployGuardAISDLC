@@ -20,6 +20,15 @@ jobs:
     steps:
 
       # ============================================================
+      # RECORD WORKFLOW START TIME
+      # ============================================================
+
+      - name: Record CI Start Time
+        run: |
+          echo "CI_STARTED_EPOCH=$(date +%s)" >> "$GITHUB_ENV"
+
+
+      # ============================================================
       # 1. CHECKOUT SOURCE CODE
       # ============================================================
 
@@ -91,6 +100,7 @@ jobs:
           OLLAMA_URL=http://host.docker.internal:11434
           OLLAMA_MODEL=phi3:mini
           AI_FALLBACK_PROVIDER=ollama
+          CI_WEBHOOK_SECRET=$(python -c 'import secrets; print(secrets.token_urlsafe(32))')
           EOF
 
 
@@ -149,11 +159,7 @@ jobs:
 
           echo "Registering deployment with DeployGuard..."
 
-          RESPONSE=$(curl --fail \
-            -X POST \
-            http://localhost:8000/deployments/ \
-            -H "Content-Type: application/json" \
-            -d '{
+          RESPONSE=$(curl --fail             -X POST             http://localhost:8000/deployments/             -H "Content-Type: application/json"             -d '{
               "deployment_name": "DeployGuard-CI-${{ github.run_number }}",
               "version": "${{ github.sha }}",
               "environment": "QA",
@@ -192,8 +198,7 @@ jobs:
           ]
 
           for field in required_fields:
-              assert field in data, \
-                  f"Missing deployment field: {field}"
+              assert field in data,                   f"Missing deployment field: {field}"
 
           assert data["environment"] == "QA"
           assert data["status"] == "Running"
@@ -217,7 +222,6 @@ jobs:
 
       # ============================================================
       # 12. COLLECT DEPLOYMENT TELEMETRY
-      # ============================================================
       #
       # NOTE:
       # This creates telemetry for the CURRENT deployment ID.
@@ -226,7 +230,6 @@ jobs:
       #
       # This is temporary CI telemetry until the real application
       # deployment is connected to DeployGuard.
-      #
       # ============================================================
 
       - name: Collect Deployment Telemetry
@@ -247,12 +250,7 @@ jobs:
 
           echo "Deployment ID: $DEPLOYMENT_ID"
 
-          TELEMETRY_RESPONSE=$(curl --fail \
-            -X POST \
-            http://localhost:8000/telemetry/ \
-            -H "accept: application/json" \
-            -H "Content-Type: application/json" \
-            -d "{
+          TELEMETRY_RESPONSE=$(curl --fail             -X POST             http://localhost:8000/telemetry/             -H "accept: application/json"             -H "Content-Type: application/json"             -d "{
               \"deployment_id\": $DEPLOYMENT_ID,
               \"cpu_usage\": 47.44,
               \"memory_usage\": 72.08,
@@ -305,8 +303,7 @@ jobs:
           ]
 
           for field in required_fields:
-              assert field in telemetry, \
-                  f"Missing telemetry field: {field}"
+              assert field in telemetry,                   f"Missing telemetry field: {field}"
 
           assert telemetry["deployment_id"] == deployment_id
 
@@ -338,8 +335,7 @@ jobs:
 
           echo "Checking DeployGuard metrics endpoint..."
 
-          curl --fail \
-            http://localhost:8000/metrics
+          curl --fail             http://localhost:8000/metrics
 
           echo ""
           echo "Metrics endpoint verification PASSED."
@@ -348,15 +344,13 @@ jobs:
       # ============================================================
       # 15. RUN DEPLOYMENT VERIFICATION GATE
       # ============================================================
-      #
+
       # IMPORTANT:
       # Do NOT use curl --fail here.
       #
       # We need to capture the response body even if the API returns
       # HTTP 500 so that GitHub Actions shows the actual backend
       # exception.
-      #
-      # ============================================================
 
       - name: Run Deployment Verification Gate
         id: verification_gate
@@ -377,13 +371,7 @@ jobs:
 
           echo "Deployment ID: $DEPLOYMENT_ID"
 
-          HTTP_STATUS=$(curl \
-            -s \
-            -o verification_response.json \
-            -w "%{http_code}" \
-            -X POST \
-            "http://localhost:8000/verification/$DEPLOYMENT_ID" \
-            -H "accept: application/json")
+          HTTP_STATUS=$(curl             -s             -o verification_response.json             -w "%{http_code}"             -X POST             "http://localhost:8000/verification/$DEPLOYMENT_ID"             -H "accept: application/json")
 
           echo ""
           echo "HTTP STATUS: $HTTP_STATUS"
@@ -676,8 +664,7 @@ jobs:
           echo "FINAL DEPLOYGUARD METRICS"
           echo "========================================"
 
-          curl --fail \
-            http://localhost:8000/metrics
+          curl --fail             http://localhost:8000/metrics
 
           echo ""
           echo "========================================"
@@ -709,3 +696,102 @@ jobs:
         run: |
 
           docker compose down
+
+
+      # ============================================================
+      # 23. REPORT CI RESULT TO LOCAL DEPLOYGUARD INSTANCE
+      # ============================================================
+
+      - name: Report CI Result to DeployGuard
+        if: always()
+        continue-on-error: true
+        env:
+          DEPLOYGUARD_API_URL: ${{ vars.DEPLOYGUARD_API_URL }}
+          CI_WEBHOOK_SECRET: ${{ secrets.CI_WEBHOOK_SECRET }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          if [ -z "$DEPLOYGUARD_API_URL" ] || [ -z "$CI_WEBHOOK_SECRET" ]; then
+            echo "DeployGuard reporting is not configured. Skipping CI event report."
+            exit 0
+          fi
+
+          python - <<'PY'
+          import json
+          import os
+          import time
+          import urllib.error
+          import urllib.request
+          from datetime import datetime, timezone
+
+          started_epoch = int(os.environ.get("CI_STARTED_EPOCH", str(int(time.time()))))
+          completed_epoch = int(time.time())
+          duration_seconds = max(0, completed_epoch - started_epoch)
+
+          job_status = os.environ.get("JOB_STATUS", "failure").lower()
+          conclusion = job_status if job_status in {
+              "success", "failure", "cancelled"
+          } else "failure"
+
+          branch = (
+              os.environ.get("GITHUB_HEAD_REF")
+              or os.environ.get("GITHUB_REF_NAME")
+              or ""
+          )
+
+          payload = {
+              "repository": os.environ["GITHUB_REPOSITORY"],
+              "workflow_name": os.environ["GITHUB_WORKFLOW"],
+              "run_id": os.environ["GITHUB_RUN_ID"],
+              "run_attempt": int(os.environ.get("GITHUB_RUN_ATTEMPT", "1")),
+              "branch": branch,
+              "commit_sha": os.environ.get("GITHUB_SHA"),
+              "event_name": os.environ.get("GITHUB_EVENT_NAME"),
+              "status": "completed",
+              "conclusion": conclusion,
+              "started_at": datetime.fromtimestamp(
+                  started_epoch, timezone.utc
+              ).isoformat(),
+              "completed_at": datetime.fromtimestamp(
+                  completed_epoch, timezone.utc
+              ).isoformat(),
+              "duration_seconds": float(duration_seconds),
+              "html_url": (
+                  f'{os.environ["GITHUB_SERVER_URL"]}/'
+                  f'{os.environ["GITHUB_REPOSITORY"]}/actions/runs/'
+                  f'{os.environ["GITHUB_RUN_ID"]}'
+              ),
+          }
+
+          api_url = os.environ["DEPLOYGUARD_API_URL"].rstrip("/")
+          endpoint = f"{api_url}/ci-events/"
+
+          request = urllib.request.Request(
+              endpoint,
+              data=json.dumps(payload).encode("utf-8"),
+              headers={
+                  "Content-Type": "application/json",
+                  "Authorization": (
+                      "Bearer " + os.environ["CI_WEBHOOK_SECRET"]
+                  ),
+              },
+              method="POST",
+          )
+
+          print("Sending CI workflow result to DeployGuard...")
+          print("Workflow:", payload["workflow_name"])
+          print("Conclusion:", conclusion)
+          print("Duration (seconds):", duration_seconds)
+
+          try:
+              with urllib.request.urlopen(request, timeout=20) as response:
+                  response_body = response.read().decode("utf-8")
+                  print("DeployGuard response status:", response.status)
+                  print("DeployGuard response:", response_body)
+          except urllib.error.HTTPError as exc:
+              print("WARNING: DeployGuard returned HTTP", exc.code)
+              print(exc.read().decode("utf-8", errors="replace"))
+              raise
+          except Exception as exc:
+              print("WARNING: Could not report CI result to DeployGuard:", exc)
+              raise
+          PY
