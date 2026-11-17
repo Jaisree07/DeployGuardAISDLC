@@ -1,3 +1,4 @@
+
 from prometheus_client import Counter, Histogram, Gauge
 
 
@@ -197,4 +198,21 @@ REGRESSION_DETECTED = Gauge(
         "pattern",
         "severity"
     ]
+)
+
+
+# =====================================================
+# GitHub Actions CI/CD Pipeline Metrics
+# =====================================================
+
+CI_PIPELINE_RUNS = Counter(
+    "deployguard_ci_pipeline_runs_total",
+    "Total GitHub Actions pipeline runs",
+    ["workflow", "status"]
+)
+
+CI_PIPELINE_DURATION = Histogram(
+    "deployguard_ci_pipeline_duration_seconds",
+    "GitHub Actions pipeline execution duration",
+    ["workflow"]
 )

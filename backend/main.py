@@ -1,3 +1,4 @@
+
 from fastapi import FastAPI
 from fastapi.responses import Response
 from sqlalchemy import inspect, text
@@ -13,11 +14,13 @@ from backend.core.logger import logger
 from backend.database.database import Base, engine
 from backend.models.deployment import Deployment
 from backend.models.telemetry import Telemetry
+from backend.models.ci_event import CIEvent
 from backend.api.predict import router as predict_router
 from backend.api.verification import router as verification_router
 from backend.models.prediction import Prediction
 from backend.middleware.metrics import MetricsMiddleware
 from backend.api.dashboard import router as dashboard_router
+from backend.api.ci_events import router as ci_events_router
 
 from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 
@@ -34,27 +37,11 @@ SQLiteStorage.initialize()
 # ============================================================
 # SQLITE SCHEMA MIGRATION
 # ============================================================
-#
-# SQLAlchemy create_all() creates missing tables but does NOT
-# add new columns to an already existing table.
-#
-# The predictions table was originally created without:
-#   - risk
-#   - ai_explanation
-#
-# The current Prediction model requires both columns.
-#
-# This migration safely adds the columns when they are missing.
-# ============================================================
 
 def ensure_prediction_schema():
     """
     Ensure the predictions table contains all columns required
     by the current Prediction model.
-
-    This is intentionally idempotent:
-    - If the column already exists -> nothing happens.
-    - If the column is missing -> it is added.
     """
 
     inspector = inspect(engine)
@@ -146,6 +133,7 @@ app.include_router(feature_router)
 app.include_router(regressions_router)
 app.include_router(verification_router)
 app.include_router(dashboard_router)
+app.include_router(ci_events_router)
 
 
 # ============================================================

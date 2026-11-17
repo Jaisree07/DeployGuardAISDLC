@@ -1,3 +1,4 @@
+
 from dotenv import load_dotenv
 import os
 
@@ -6,13 +7,16 @@ load_dotenv()
 
 class Settings:
     APP_NAME = os.getenv("APP_NAME", "DeployGuard AI")
+
     APP_VERSION = os.getenv("APP_VERSION", "1.0.0")
+
     APP_DESCRIPTION = os.getenv(
         "APP_DESCRIPTION",
         "AI-Powered Deployment Verification & Regression Detection Platform"
     )
 
     HOST = os.getenv("HOST", "127.0.0.1")
+
     PORT = int(os.getenv("PORT", "8000"))
 
     ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
@@ -23,6 +27,12 @@ class Settings:
     )
 
     LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+
+    # GitHub Actions CI Event Authentication
+    CI_WEBHOOK_SECRET = os.getenv(
+        "CI_WEBHOOK_SECRET",
+        ""
+    )
 
 
 settings = Settings()

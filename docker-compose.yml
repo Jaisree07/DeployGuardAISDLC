@@ -1,3 +1,4 @@
+
 name: deployguardaisdlc
 
 services:
@@ -35,6 +36,9 @@ services:
 
       OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-phi3:mini}
+
+      # GitHub Actions CI Webhook Authentication
+      CI_WEBHOOK_SECRET: ${CI_WEBHOOK_SECRET:?CI_WEBHOOK_SECRET must be configured}
 
     extra_hosts:
       - "host.docker.internal:host-gateway"
