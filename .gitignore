@@ -14,3 +14,7 @@ deployguard.db
 # Runtime logs
 logs/
 *.log
+# Local development files
+.coverage
+.vscode/
+deployguard.db*
