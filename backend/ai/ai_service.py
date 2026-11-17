@@ -1,3 +1,5 @@
+
+import json
 import logging
 
 from backend.ai.config import AIConfig
@@ -16,9 +18,7 @@ _PROVIDERS = {
 class AIService:
 
     @staticmethod
-    def generate(pattern: dict) -> str:
-        prompt = build_prompt(pattern)
-
+    def _generate_with_prompt(prompt: str, pattern: dict) -> str:
         order = [AIConfig.PROVIDER] + [
             p for p in AIConfig.FALLBACK_ORDER
             if p != AIConfig.PROVIDER
@@ -33,11 +33,7 @@ class AIService:
                 continue
 
             try:
-                logger.info(
-                    "Using AI provider: %s",
-                    provider_name
-                )
-
+                logger.info("Using AI provider: %s", provider_name)
                 return generate_fn(prompt)
 
             except Exception as exc:
@@ -46,9 +42,7 @@ class AIService:
                     provider_name,
                     exc
                 )
-
                 last_error = exc
-                continue
 
         logger.error(
             "All AI providers failed. Last error: %s",
@@ -56,9 +50,42 @@ class AIService:
         )
 
         return (
-            f"[AI explanation unavailable — all providers failed] "
-            f"Raw pattern: {pattern}"
+            "[AI explanation unavailable — all providers failed] "
+            f"Input data: {pattern}"
         )
+
+    @staticmethod
+    def generate(pattern: dict) -> str:
+        prompt = build_prompt(pattern)
+        return AIService._generate_with_prompt(prompt, pattern)
+
+    @staticmethod
+    def generate_ci_insights(pattern: dict) -> str:
+        prompt = f"""
+You are DeployGuard AI, an experienced DevOps and CI/CD reliability assistant.
+
+Analyze the supplied GitHub Actions pipeline execution data.
+
+Provide a concise, evidence-based explanation using these sections:
+
+1. Pipeline Health Summary
+2. Key Observations
+3. Failure Analysis
+4. Recommended Actions
+
+Rules:
+- Use only the supplied data.
+- Do not invent error messages, root causes, or deployment impacts.
+- Distinguish controlled test failures from unexpected failures.
+- Do not describe a controlled test failure as a production incident.
+- If the available data cannot establish a root cause, explicitly say so.
+- Mention success rate and execution duration where available.
+- Keep the response understandable to a non-expert engineer.
+
+Pipeline data:
+{json.dumps(pattern, indent=2, default=str)}
+"""
+        return AIService._generate_with_prompt(prompt, pattern)
 
     @staticmethod
     def explain_all(patterns: list) -> list:

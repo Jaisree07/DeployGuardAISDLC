@@ -34,5 +34,11 @@ class Settings:
         ""
     )
 
+    # Grafana Read-Only API Authentication
+    GRAFANA_API_TOKEN = os.getenv(
+        "GRAFANA_API_TOKEN",
+        ""
+    )
+
 
 settings = Settings()
