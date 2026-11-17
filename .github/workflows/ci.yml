@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - master
+      - test-ci-failure
 
   pull_request:
     branches:
@@ -869,6 +870,20 @@ jobs:
           print(explanation)
 
           PY
+
+
+      # ============================================================
+      # CONTROLLED FAILURE TEST
+      # Runs only on the isolated test-ci-failure branch.
+      # The later cleanup and DeployGuard reporting steps use always().
+      # ============================================================
+
+      - name: Simulate Controlled CI Failure
+        if: github.ref == 'refs/heads/test-ci-failure'
+        run: |
+          echo "Intentional failure test for DeployGuard AI."
+          echo "The workflow should fail, while the reporting step still runs."
+          exit 1
 
 
       # ============================================================
