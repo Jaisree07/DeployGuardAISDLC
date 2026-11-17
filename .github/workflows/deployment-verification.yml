@@ -8,8 +8,6 @@ on:
       - main
       - master
 
-  workflow_dispatch:
-  
 jobs:
 
   deployment-verification:
