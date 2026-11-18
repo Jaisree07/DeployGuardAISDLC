@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - master
+      - feature/ai-ci-pipeline-insights
 
   pull_request:
     branches:
@@ -21,6 +22,9 @@ jobs:
 
     env:
       GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      CI_WEBHOOK_SECRET: ${{ secrets.CI_WEBHOOK_SECRET }}
+      GRAFANA_SMTP_USER: ${{ secrets.GRAFANA_SMTP_USER }}
+      GRAFANA_SMTP_PASSWORD: ${{ secrets.GRAFANA_SMTP_PASSWORD }}
 
     steps:
       # ============================================================
@@ -87,6 +91,15 @@ jobs:
 
       - name: Configure Deployment Environment
         run: |
+          if [ -z "$CI_WEBHOOK_SECRET" ]; then
+            echo "::error::CI_WEBHOOK_SECRET GitHub repository secret is missing."
+            exit 1
+          fi
+
+          if [ -z "$GROQ_API_KEY" ]; then
+            echo "::error::GROQ_API_KEY GitHub repository secret is missing."
+            exit 1
+          fi
 
           cat > .env <<EOF
           APP_NAME=DeployGuard AI
@@ -103,9 +116,10 @@ jobs:
           OLLAMA_URL=http://host.docker.internal:11434
           OLLAMA_MODEL=phi3:mini
           AI_FALLBACK_PROVIDER=ollama
-          CI_WEBHOOK_SECRET=$(python -c 'import secrets; print(secrets.token_urlsafe(32))')
+          GRAFANA_SMTP_USER=${GRAFANA_SMTP_USER:-}
+          GRAFANA_SMTP_PASSWORD=${GRAFANA_SMTP_PASSWORD:-}
+          CI_WEBHOOK_SECRET=${CI_WEBHOOK_SECRET}
           EOF
-
 
       # ============================================================
       # 7. CLEAN CI DATABASE
