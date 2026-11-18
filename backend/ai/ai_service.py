@@ -50,8 +50,8 @@ class AIService:
         )
 
         return (
-            "[AI explanation unavailable — all providers failed] "
-            f"Input data: {pattern}"
+            "[AI explanation unavailable — all providers failed]\n"
+            f"Raw pattern: {pattern}"
         )
 
     @staticmethod
